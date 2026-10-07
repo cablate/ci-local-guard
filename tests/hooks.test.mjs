@@ -16,7 +16,7 @@ function fixtureRepo() {
   git('init', '-q', '-b', 'dev');
   // Isolated fixture only: one write replaces four configuration-only processes.
   // Real git init/commit/hook execution and every assertion remain unchanged.
-  appendFileSync(path.join(root, '.git/config'), `\n[user]\n\tname = Fixture\n\temail = fixture@example.invalid\n[core]\n\tautocrlf = false\n\thooksPath = ${JSON.stringify(path.join(root, '.no-hooks').replaceAll('\\', '/'))}\n`);
+  appendFileSync(path.join(root, '.git/config'), `\n[user]\n\tname = Fixture\n\temail = fixture@example.invalid\n[core]\n\tautocrlf = false\n\thooksPath = ${JSON.stringify(path.join(root, '.no-hooks'))}\n`);
   return { root, git };
 }
 
