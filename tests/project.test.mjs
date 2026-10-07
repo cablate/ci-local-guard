@@ -199,7 +199,7 @@ test('candidate README preserves adoption boundaries without internal evidence i
   assert.match(readme, /CLI.*不是惡意程式 sandbox|工具不是惡意程式 sandbox/);
   const intro = readme.slice(0, readme.indexOf('<details>'));
   assert.match(intro, /先選你的情境/);
-  assert.match(intro, /採用底線.*正式安全掃描未開始/);
+  assert.match(intro, /採用底線.*不代表安全保證/);
   assert.equal((readme.match(/<details>/g) || []).length, (readme.match(/<\/details>/g) || []).length);
   const principles = readme.slice(readme.indexOf('## PRINCIPLE：'), readme.indexOf('## 現有能力與邊界'));
   assert.equal((principles.match(/^\d+\. /gm) || []).length, 10);
