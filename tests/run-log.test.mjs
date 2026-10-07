@@ -218,3 +218,20 @@ test('structured failure keeps simultaneous child, receipt and post-validation i
     });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('redaction tails do not splice stdout and stderr evidence lines', async () => {
+  const root = fixture();
+  try {
+    let failure;
+    try {
+      await runLogged(process.execPath, ['-e', 'console.log("complete stdout evidence"); console.error("complete stderr evidence"); process.exitCode=1'], root, {
+        env: { ...process.env, API_TOKEN: 'synthetic-token-long-tail' },
+      });
+    } catch (error) { failure = error; }
+    assert.ok(failure);
+    const log = readFileSync(failure.logFile, 'utf8');
+    assert.match(log, /complete stdout evidence\n/);
+    assert.match(log, /complete stderr evidence\n/);
+    assert.equal(failure.executionFailure.exitCode, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

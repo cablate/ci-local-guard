@@ -90,8 +90,26 @@ export async function runLogged(command, args, repo, {
     if (!failure) await new Promise((resolve) => {
       child = spawn(command, args, { cwd: repo, env: cleanGitEnvironment(env),
         stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-      const stdout = createRedactor(env, write);
-      const stderr = createRedactor(env, write);
+      // Keep redactor-delayed tails from splicing stdout/stderr inside a line.
+      // Bound unterminated lines too; this is not a total-order stream replay.
+      const lineSink = () => {
+        let pending = '';
+        const drain = (text, final = false) => {
+          pending += text;
+          let end;
+          while ((end = pending.indexOf('\n')) >= 0 || pending.length >= 65536) {
+            const size = end >= 0 && end < 65536 ? end + 1 : 65536;
+            write(pending.slice(0, size));
+            pending = pending.slice(size);
+          }
+          if (final && pending) { write(pending); pending = ''; }
+        };
+        return drain;
+      };
+      const stdoutLines = lineSink();
+      const stderrLines = lineSink();
+      const stdout = createRedactor(env, stdoutLines);
+      const stderr = createRedactor(env, stderrLines);
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', stdout);
@@ -106,6 +124,8 @@ export async function runLogged(command, args, repo, {
         exitSignal = signal;
         stdout('', true);
         stderr('', true);
+        stdoutLines('', true);
+        stderrLines('', true);
         if (code !== 0) {
           if (signal) causes.add('process-terminated');
           else if (processStarted && Number.isInteger(code)) causes.add('child-exit-nonzero');

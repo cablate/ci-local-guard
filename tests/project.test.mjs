@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, realpathSync, symlinkSync, writeFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -501,7 +501,7 @@ test('Git lookup targets the requested repo even when a hook exports a different
     execFileSync('git', ['init', '-q', source], { env: cleanGitEnvironment() });
     execFileSync('git', ['init', '-q', target], { env: cleanGitEnvironment() });
     process.env.GIT_DIR = path.join(source, '.git');
-    assert.equal(path.resolve(git(target, ['rev-parse', '--show-toplevel'])), path.resolve(target));
+    assert.equal(realpathSync(git(target, ['rev-parse', '--show-toplevel'])), realpathSync(target));
   } finally {
     if (original === undefined) delete process.env.GIT_DIR;
     else process.env.GIT_DIR = original;
