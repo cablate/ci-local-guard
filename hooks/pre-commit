@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Same isolation as pre-push: nested Git commands must not inherit this repository.
+git_local_vars=$(git rev-parse --local-env-vars)
+unset $git_local_vars
+exec node "$tool_root/cli.mjs" pre-commit

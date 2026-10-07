@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Git exports repository-local variables to hooks. Nested fixture repos and
+# CI preflight must discover their own .git, not inherit the push repository.
+git_local_vars=$(git rev-parse --local-env-vars)
+unset $git_local_vars
+exec node "$tool_root/cli.mjs" pre-push
