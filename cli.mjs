@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { ACTIONLINT_VERSION, ensureActionlint } from './src/actionlint.mjs';
 import { observeCheckout, withExactCheckout } from './src/checkout.mjs';
 import { runLogged } from './src/run-log.mjs';
+import { checkSetup } from './src/readiness.mjs';
 import { auditRuns, collectRun, collectRuns, compareRuns, inspectRuns } from './src/ci-runs.mjs';
 import { assessLocalPushPolicy, assessPlanObligations, assessProtection, assessPushObligations, cleanGitEnvironment, formatPlan, git, MAX_PUSH_INPUT_BYTES, parsePushUpdates, planEventContext, preflightConfiguration, projectPreflight, simulator, ZERO_SHA } from './src/project.mjs';
 
 const toolRoot = path.dirname(fileURLToPath(import.meta.url));
 const HOOKS_PATH = path.join(toolRoot, 'hooks').replaceAll('\\', '/');
-const jsonRequested = ['preflight', 'plan', 'pre-push'].includes(process.argv[2]) && process.argv.slice(3).includes('--json');
+const jsonRequested = ['preflight', 'plan', 'pre-push', 'doctor'].includes(process.argv[2]) && process.argv.slice(3).includes('--json');
 const diagnostic = (text) => (jsonRequested ? process.stderr : process.stdout).write(text);
 let preflightReport;
 let planReport;
@@ -47,8 +48,8 @@ function options(args) {
   const result = {};
   for (let index = 0; index < args.length; index += 1) {
     const key = args[index];
-    if (!['--repo', '--base', '--head', '--event', '--worktree', '--json', '--ref', '--base-ref', '--head-ref', '--with-plan', '--pr-action', '--pr-fork'].includes(key)) throw new Error(`Unknown option: ${key}`);
-    if (['--worktree', '--json', '--with-plan'].includes(key)) {
+    if (!['--repo', '--base', '--head', '--event', '--worktree', '--json', '--ref', '--base-ref', '--head-ref', '--with-plan', '--pr-action', '--pr-fork', '--check'].includes(key)) throw new Error(`Unknown option: ${key}`);
+    if (['--worktree', '--json', '--with-plan', '--check'].includes(key)) {
       result[key.slice(2)] = true;
     } else {
       if (!args[index + 1] || args[index + 1].startsWith('--')) throw new Error(`Missing value for ${key}`);
@@ -365,6 +366,8 @@ Local repository commands (require Git; trust project code before execution):
   plan --repo <project> --base <ref> --head <ref> [--event pull_request|push|workflow_dispatch] [--json]
     Generic committed plan: [--ref refs/heads/name] or PR [--base-ref name] [--head-ref name] [--pr-action opened] [--pr-fork true|false]
   plan|doctor|pre-commit|pre-push|install-hook|uninstall-hook --repo <project>
+  doctor --check --json --repo <project> (read-only setup; no downloads or adapter execution)
+  CI_LOCAL_GUARD_TIMEOUT_SECONDS: positive integer; default 900. Plan remains limited to 30 seconds.
   pre-push --repo <project> [--json] < Git-pre-push-update-records
 
 Generic push requires explicit committed local policy, exact plan and fresh receipt; not a Hosted CI verdict.
@@ -409,6 +412,14 @@ See README.md for schemas, side effects and unverified protection boundaries.
     throw new Error('Usage: node cli.mjs <doctor|plan|preflight|install-hook|uninstall-hook|pre-push|pre-commit> --repo <project> [--base <ref>]');
   }
   const opts = options(rest);
+  if (opts.check && verb !== 'doctor') throw new Error('--check supports doctor only');
+  if (verb === 'doctor' && opts.check) {
+    if (Object.keys(opts).some(key => !['repo', 'check', 'json'].includes(key))) throw new Error('Unsupported doctor --check option');
+    const report = checkSetup(opts.repo || process.cwd());
+    process.stdout.write(JSON.stringify(report, null, opts.json ? undefined : 2) + '\n');
+    process.exitCode = report.outcome === 'configured' ? 0 : report.outcome === 'unconfigured' ? 2 : 1;
+    return;
+  }
   if (opts['with-plan'] && verb !== 'preflight') throw new Error('--with-plan supports preflight only');
   if (verb !== 'plan' && !(verb === 'preflight' && opts['with-plan']) && ['ref', 'base-ref', 'head-ref', 'pr-action', 'pr-fork'].some(key => Object.hasOwn(opts, key))) throw new Error('Event ref context options support plan or preflight --with-plan only');
   if (opts.json && !['preflight', 'plan', 'pre-push'].includes(verb)) throw new Error('--json supports preflight, plan and pre-push only');
@@ -442,6 +453,8 @@ See README.md for schemas, side effects and unverified protection boundaries.
 
 function failureNextAction(error) {
   const causes = error.executionFailure?.causes || [];
+  if (error.retainedCheckout) return 'Inspect retainedCheckout and logs; termination or cleanup was not confirmed. Do not delete a checkout still used by live processes.';
+  if (causes.includes('execution-timeout') || causes.includes('execution-cancelled')) return 'Inspect the interrupted check and retained log before changing the explicit time budget. Do not retry to green or treat residual receipts as PASS.';
   if (error.checkoutObservation?.status === 'drifted' || causes.includes('post-execution-validation-failed')) return 'Restore and review the execution checkout/validation contract before rerunning; this result cannot establish a reusable PASS.';
   if (causes.includes('receipt-invalid') || causes.includes('receipt-unavailable')) return 'Correct the project receipt identity/schema/exit contract and inspect the retained log; do not treat child exit zero as a successful gate.';
   if (causes.some(code => code.startsWith('log-') || code === 'child-log-collection-failed')) return 'Resolve the bounded log collection/storage failure and inspect retained evidence before rerunning; do not skip required checks or disable evidence protection.';
@@ -453,7 +466,9 @@ function failureNextAction(error) {
 main().catch((error) => {
   console.error(`[ci-local-guard] ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
-  if (jsonRequested && process.argv[2] === 'pre-push') {
+  if (jsonRequested && process.argv[2] === 'doctor') {
+    process.stdout.write(JSON.stringify({ schemaVersion: 'ci-local-guard/setup-report/v1', outcome: 'blocked', nextAction: 'Use doctor --check --json --repo <project>.' }) + '\n');
+  } else if (jsonRequested && process.argv[2] === 'pre-push') {
     const failure = { code: error.pushCode || 'execution-failed', logFile: error.logFile || null };
     pushReport.outcome = 'blocked';
     pushReport.failure = failure;
@@ -463,7 +478,7 @@ main().catch((error) => {
       if (error.projectReceipt || error.logFile) activePushUpdate.product = { status: 'failed', result: 'failure',
         logFile: error.logFile || null, durationMs: Number.isFinite(error.durationMs) ? error.durationMs : null,
         projectReceipt: error.projectReceipt || { status: 'unavailable' }, checkoutObservation: error.checkoutObservation || null,
-        collectedLogs: error.collectedLogs || null, executionFailure: error.executionFailure || null };
+        collectedLogs: error.collectedLogs || null, executionFailure: error.executionFailure || null, retainedCheckout: error.retainedCheckout || null, cleanupFailure: error.cleanupFailure || null };
     }
     if (error.executionFailure) pushReport.nextAction = failureNextAction(error);
     process.stdout.write(`${JSON.stringify(pushReport)}\n`);
@@ -486,7 +501,7 @@ main().catch((error) => {
       durationMs: Number.isFinite(error.durationMs) ? error.durationMs : null,
       collectedLogs: error.collectedLogs || null, projectReceipt: error.projectReceipt || { status: 'unavailable' },
       checkoutObservation: error.checkoutObservation || null, protection: error.protection || assessProtection(),
-      executionFailure: error.executionFailure || null };
+      executionFailure: error.executionFailure || null, retainedCheckout: error.retainedCheckout || null, cleanupFailure: error.cleanupFailure || null };
     report.nextAction = failureNextAction(error);
     process.stdout.write(`${JSON.stringify(report)}\n`);
   }

@@ -2,7 +2,7 @@
 status: public-experimental
 as_of: 2026-10-08
 owner: CI Local Guard maintainers
-next_action: 收集外部 AI 採用回饋及 CI 實例；不減少必要保護、不宣稱未證明的節省。
+next_action: 驗證有界執行與自身接入，完成 CI 對照實驗、現行 IE 隔離接入與無歷史 AI 採用驗收；未驗不宣稱完成。
 ---
 
 # CI Local Guard
@@ -34,6 +34,25 @@ CI Local Guard is an experimental, MIT-licensed CLI for development agents and h
 Use Node >=22.13.0 <23 and Git. Clone this public repository, then run `node cli.mjs --help`. The offline demo below requires no login or project configuration: it reports 60 seconds of execution wall time versus 80 job-seconds, with `savings: null`. User guidance is primarily Traditional Chinese; CLI help, JSON fields and [contributor guidance](CONTRIBUTING.md) are English. There is no npm registry package or versioned Release yet.
 
 ## 安裝
+
+### 專案 AI 接入流程
+
+1. 確認目標 repo、branch、HEAD、dirty state 與既有 agent 指令；先讀專案自己的檢查規則。
+2. 執行 `node "<tool-directory>/cli.mjs" doctor --check --json --repo <project>`。此模式不下載、不登入、不執行 adapter；只核對 HEAD 設定及已安裝工具。`configured` 不代表依賴就緒或 checks PASS；exit 0／2／1 分別是 configured／unconfigured／blocked。
+3. 未配置時，由專案 AI 提出最小 `.ci-local-guard.json` 與專案擁有的 adapter，包裝既有檢查。提交前先驗 adapter；不新增較弱的檢查，不把專案規則移入 Guard。完整契約見下方 AI 操作入口。
+4. 在專案**既有** AGENTS／CLAUDE 等入口加短導航：何時用、工具位置取得方式、descriptor 與檢查 owner。不要複製整份 README 或提交個人絕對路徑；工具不自動改 agent 文件。
+5. 開發中 dirty changes 先跑專案原生命令；獲准提交後，用明確 `--base`、`--head` 與 `--json` 建立 exact-commit 證據。缺依賴由專案準備，不自動安裝。
+6. 讀取 identity、outcome、receipt、nextAction 與 unverified；失敗先診斷，不重試到綠。CI 診斷是獨立路徑，不需要 adapter。
+
+本 repo 的導航是 AGENTS.md，descriptor 指向 quality/preflight.mjs；它執行 package.json 的完整測試契約，不再呼叫 Guard。通過仍只代表目前 OS 的本機檢查，Hosted 與另一 OS 未驗。
+
+### 本輪 dogfood 狀態
+
+採用入口、可靠執行與自身 adapter 正在實作／驗證。後續依序為自身 CI 單一變因實驗、現行 IE 獨立接入、無歷史 AI 驗收；尚不宣稱完成或節省。測試責任保持：真實 Git hooks、封裝安裝、exact checkout、receipt 身份、日誌與遮蔽，以及 Windows／Ubuntu。
+
+執行逾時、SIGINT／SIGTERM 取消或輸出超限時，工具停止自己啟動的程序樹，不按名稱殺程序，也不重試。若程序終止或 checkout 清理無法確認，失敗 JSON 提供 `retainedCheckout`／`cleanupFailure`；先確認沒有活程序使用它，再人工處理。Windows 已退出父程序的孤兒、故意脫離群組的程序與強制關閉整個 Guard 程序不保證可清理；這不是 sandbox。逾時／取消後的殘留 receipt 不作成功證據。
+
+### 安裝方式
 
 Node >=22.13.0 <23；本機預檢需要 Git。唯讀 GitHub 收集需要既有 gh 與 Actions 讀取權限。不自動登入、不安裝專案依賴；npm runtime dependencies 為零。
 
@@ -119,6 +138,7 @@ node cli.mjs audit-runs --input runs.json
 | 變數 | 預設／用途 |
 |---|---|
 | CI_LOCAL_GUARD_BASE | 未設定；代替明確 --base，不猜分支。 |
+| CI_LOCAL_GUARD_TIMEOUT_SECONDS | 子程序預設 900 秒；只能設 1..2147483 正整數。plan 保持既有 30 秒限制。 |
 | CI_LOCAL_GUARD_LOG_DIR | 使用專案 git common directory 下 ci-local-guard/logs；可指定自己擁有的目錄。 |
 | CI_LOCAL_GUARD_KEEP_LOGS | 未設定時清除成功的主執行 log；非空值保留。失敗與已收集的證據可能仍保留。 |
 | CI_LOCAL_GUARD_CACHE | 家目錄 .cache/ci-local-guard；僅 actionlint binary cache，不是 PASS cache。 |

@@ -24,6 +24,7 @@ export async function withExactCheckout(repo, head, action, { timings } = {}) {
   let attached = false;
   let linkedDependencies = false;
   let prepared = false;
+  let actionError;
   try {
     temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'ci-local-guard-'));
     checkout = path.join(temporaryRoot, 'checkout');
@@ -40,9 +41,17 @@ export async function withExactCheckout(repo, head, action, { timings } = {}) {
     prepared = true;
     record('checkout', started, 'completed');
     return await action(checkout);
+  } catch (error) {
+    actionError = error;
+    throw error;
   } finally {
     if (!prepared) record('checkout', started, 'failed');
     const cleanupStarted = performance.now();
+    if (actionError?.preserveCheckout) {
+      actionError.retainedCheckout = checkout;
+      record('cleanup', cleanupStarted, 'retained');
+      throw actionError;
+    }
     // This path is created above under the OS temp directory, never supplied by a user.
     // If Git removal fails, preserve it for diagnosis rather than deleting Git metadata.
     try {
@@ -54,7 +63,11 @@ export async function withExactCheckout(repo, head, action, { timings } = {}) {
       }
     } catch (error) {
       record('cleanup', cleanupStarted, 'failed');
-      throw error;
+      const failure = actionError || error;
+      failure.retainedCheckout = checkout || temporaryRoot;
+      failure.cleanupFailure = 'checkout-cleanup-failed';
+      if (failure.executionFailure) failure.executionFailure.causes.push('checkout-cleanup-failed');
+      throw failure;
     }
   }
 }

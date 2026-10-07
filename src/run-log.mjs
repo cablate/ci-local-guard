@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readSync, readdirSync, unlinkSync, writeSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
@@ -39,12 +39,14 @@ export function createRedactor(env, write) {
 // failures keep bounded, best-effort-redacted output without echoing it to chat.
 export async function runLogged(command, args, repo, {
   logRepo = repo, stage = 'check', env = process.env, maxBytes = 24 * 1024 * 1024,
+  timeoutMs = executionTimeout(env),
   collectDirectory,
   receiptIdentity,
   receiptSchema,
   requireReceipt = false,
   validateAfter,
 } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647) throw new Error('Invalid execution timeout');
   if (!/^[a-z][a-z0-9-]*$/.test(stage)) throw new Error('Invalid log stage');
   if (validateAfter !== undefined && typeof validateAfter !== 'function') throw new Error('Invalid post-execution validator');
   if (collectDirectory !== undefined && collectDirectory !== 'tmp/preflight') throw new Error('Unsupported child log directory');
@@ -66,6 +68,8 @@ export async function runLogged(command, args, repo, {
   let phase = 'process';
   const causes = new Set();
   let child;
+  let stop = () => {};
+  let terminationUncertain = false;
   const write = (text) => {
     if (loggingFailed) return;
     let cause = 'log-write-failed';
@@ -82,14 +86,48 @@ export async function runLogged(command, args, repo, {
       causes.add(cause);
       failure = error;
       loggingFailed = true;
-      child?.kill();
+      stop(cause);
     }
   };
   write(`[ci-local-guard] stage: ${stage}\n`); // Never serialize argv or environment.
   try {
+    let termination;
     if (!failure) await new Promise((resolve) => {
+      let settled = false;
+      let deadline;
+      let drainDeadline;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        clearTimeout(drainDeadline);
+        process.off('SIGINT', cancel);
+        process.off('SIGTERM', cancel);
+        resolve();
+      };
+      const cancel = () => stop('execution-cancelled');
+      stop = (cause) => {
+        if (settled || termination) return;
+        causes.add(cause);
+        failure ??= new Error(cause);
+        termination = terminateTree(child).catch(() => {
+          terminationUncertain = true;
+          causes.add('process-tree-termination-unverified');
+        });
+        drainDeadline = setTimeout(() => {
+          terminationUncertain = true;
+          causes.add('process-drain-timeout');
+          child.stdout.destroy();
+          child.stderr.destroy();
+          child.unref();
+          finish();
+        }, 5000);
+      };
       child = spawn(command, args, { cwd: repo, env: cleanGitEnvironment(env),
-        stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' });
+      process.on('SIGINT', cancel);
+      process.on('SIGTERM', cancel);
+      deadline = setTimeout(() => stop('execution-timeout'), timeoutMs);
       // Keep redactor-delayed tails from splicing stdout/stderr inside a line.
       // Bound unterminated lines too; this is not a total-order stream replay.
       const lineSink = () => {
@@ -120,6 +158,7 @@ export async function runLogged(command, args, repo, {
         failure ??= new Error(processStarted ? 'process execution error' : 'process could not start');
       });
       child.on('close', (code, signal) => {
+        if (settled) return;
         exitCode = code;
         exitSignal = signal;
         stdout('', true);
@@ -131,9 +170,10 @@ export async function runLogged(command, args, repo, {
           else if (processStarted && Number.isInteger(code)) causes.add('child-exit-nonzero');
           failure ??= new Error(signal ? `terminated by ${signal}` : `exit code ${code}`);
         }
-        resolve();
+        finish();
       });
     });
+    await termination;
     // The child has closed, but the exact checkout still exists. Append complete
     // inner logs even after a child failure, using the same redactor and budget.
     phase = 'child-log-collection';
@@ -175,7 +215,7 @@ export async function runLogged(command, args, repo, {
       collectionFinished = true;
     }
     phase = 'receipt-validation';
-    if (receiptIdentity) {
+    if (receiptIdentity && !causes.has('execution-timeout') && !causes.has('execution-cancelled') && !terminationUncertain) {
       projectReceipt = { status: 'invalid' };
       projectReceipt = readProjectReceipt(repo, receiptIdentity, exitCode, receiptSchema);
       if (requireReceipt && projectReceipt.status === 'unavailable') {
@@ -228,6 +268,7 @@ export async function runLogged(command, args, repo, {
     error.durationMs = durationMs;
     error.collectedLogs = collectedLogs;
     error.projectReceipt = projectReceipt;
+    error.preserveCheckout = terminationUncertain;
     error.executionFailure = { schemaVersion: 'ci-local-guard/execution-failure/v1', stage,
       processStarted, exitCode: processStarted && Number.isInteger(exitCode) && exitCode >= 0 ? exitCode : null,
       transportCloseCode: Number.isInteger(exitCode) ? exitCode : null, signal: exitSignal || null,
@@ -243,4 +284,24 @@ export async function runLogged(command, args, repo, {
     try { unlinkSync(logFile); } catch { retained = true; }
   }
   return { durationMs, logFile: retained ? logFile : null, collectedLogs, projectReceipt };
+}
+
+export function executionTimeout(env = process.env) {
+  const value = env.CI_LOCAL_GUARD_TIMEOUT_SECONDS ?? '900';
+  if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > 2147483) {
+    throw new Error('CI_LOCAL_GUARD_TIMEOUT_SECONDS must be a positive integer (1..2147483)');
+  }
+  return Number(value) * 1000;
+}
+
+// Only the process tree owned by this invocation; never kill by executable name.
+async function terminateTree(child) {
+  if (!child?.pid) return;
+  if (process.platform === 'win32') {
+    await new Promise((resolve, reject) => execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'],
+      { windowsHide: true, timeout: 4000, maxBuffer: 65536 }, error => error ? reject(error) : resolve()));
+  } else {
+    try { process.kill(-child.pid, 'SIGKILL'); }
+    catch (error) { if (error.code !== 'ESRCH') throw error; }
+  }
 }

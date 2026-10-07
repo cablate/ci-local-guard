@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "ci-local-guard/project/v1",
+  "preflight": {
+    "entrypoint": "quality/preflight.mjs",
+    "dependencies": "none",
+    "receipt": "guard-v1"
+  }
+}

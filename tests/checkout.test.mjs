@@ -6,6 +6,57 @@ import os from 'node:os';
 import { git } from '../src/project.mjs';
 import { withExactCheckout } from '../src/checkout.mjs';
 
+test('uncertain termination retains checkout and original failure', async () => {
+  const repo = mkdtempSync(path.join(os.tmpdir(), 'guard-retained-'));
+  let retained;
+  try {
+    git(repo, ['init', '-q']);
+    writeFileSync(path.join(repo, 'input'), 'fixture');
+    git(repo, ['add', '.']);
+    git(repo, ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture']);
+    const failure = Object.assign(new Error('termination uncertain'), { preserveCheckout: true });
+    await assert.rejects(withExactCheckout(repo, git(repo, ['rev-parse', 'HEAD']), async () => { throw failure; }), error => {
+      assert.equal(error, failure);
+      retained = error.retainedCheckout;
+      assert.ok(existsSync(retained));
+      return true;
+    });
+  } finally {
+    if (retained) { git(repo, ['worktree', 'remove', '--force', retained]); rmSync(path.dirname(retained), { recursive: true, force: true }); }
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('locked worktree cleanup failure preserves original error and reports retained location', async () => {
+  const repo = mkdtempSync(path.join(os.tmpdir(), 'guard-cleanup-'));
+  let retained;
+  try {
+    git(repo, ['init', '-q']);
+    writeFileSync(path.join(repo, 'input'), 'fixture');
+    git(repo, ['add', '.']);
+    git(repo, ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture']);
+    const failure = new Error('product failed');
+    await assert.rejects(withExactCheckout(repo, git(repo, ['rev-parse', 'HEAD']), async checkout => {
+      retained = checkout;
+      git(repo, ['worktree', 'lock', checkout]);
+      throw failure;
+    }), error => {
+      assert.equal(error, failure);
+      assert.equal(error.cleanupFailure, 'checkout-cleanup-failed');
+      assert.equal(error.retainedCheckout, retained);
+      assert.ok(existsSync(retained));
+      return true;
+    });
+  } finally {
+    if (retained) {
+      git(repo, ['worktree', 'unlock', retained]);
+      git(repo, ['worktree', 'remove', '--force', retained]);
+      rmSync(path.dirname(retained), { recursive: true, force: true });
+    }
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test('exact checkout preserves dirty source and cleans itself after failure', async () => {
   const repo = mkdtempSync(path.join(os.tmpdir(), 'guard-test-'));
   let checkout;

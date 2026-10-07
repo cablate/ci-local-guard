@@ -1,17 +1,93 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { cleanGitEnvironment } from '../src/project.mjs';
-import { createRedactor, runLogged } from '../src/run-log.mjs';
+import { createRedactor, runLogged, executionTimeout } from '../src/run-log.mjs';
 
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'guard-log-test-'));
   execFileSync('git', ['init', '-q', root], { env: cleanGitEnvironment() });
   return root;
 }
+
+test('execution timeout rejects unlimited, fractional and overflowing values', () => {
+  assert.equal(executionTimeout({}), 900000);
+  assert.equal(executionTimeout({ CI_LOCAL_GUARD_TIMEOUT_SECONDS: '1' }), 1000);
+  for (const value of ['0', '-1', '', '1.5', 'Infinity', '2147484', '1e3']) {
+    assert.throws(() => executionTimeout({ CI_LOCAL_GUARD_TIMEOUT_SECONDS: value }), /positive integer/);
+  }
+});
+
+test('timeout terminates a real child tree with inherited pipes without killing unrelated processes', async () => {
+  const root = fixture();
+  const unrelated = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore', windowsHide: true });
+  const pidFile = path.join(root, 'grandchild.pid');
+  let grandchild;
+  try {
+    const code = `const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit',windowsHide:true});require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setInterval(()=>{},1000);`;
+    await assert.rejects(runLogged(process.execPath, ['-e', code], root, { timeoutMs: 1500 }), error => {
+      assert.ok(error.executionFailure.causes.includes('execution-timeout'));
+      assert.equal(error.projectReceipt.status, 'unavailable');
+      assert.equal(error.preserveCheckout, false);
+      assert.ok(existsSync(error.logFile));
+      return true;
+    });
+    grandchild = Number(readFileSync(pidFile, 'utf8'));
+    // Allow the OS to reap a terminated descendant before checking PID liveness.
+    for (let n = 0; n < 20; n++) {
+      try { process.kill(grandchild, 0); } catch { grandchild = null; break; }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.equal(grandchild, null, 'owned descendant must not remain alive');
+    assert.doesNotThrow(() => process.kill(unrelated.pid, 0));
+  } finally {
+    unrelated.kill();
+    if (grandchild) { try { process.kill(grandchild); } catch {} }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cancellation handler stops execution and is removed after settling', async () => {
+  const root = fixture();
+  const count = process.listenerCount('SIGINT');
+  const timer = setTimeout(() => process.emit('SIGINT'), 500);
+  try {
+    await assert.rejects(runLogged(process.execPath, ['-e', 'setInterval(()=>{},1000)'], root), error => {
+      assert.ok(error.executionFailure.causes.includes('execution-cancelled'));
+      return true;
+    });
+    assert.equal(process.listenerCount('SIGINT'), count);
+  } finally { clearTimeout(timer); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('POSIX exited parent with inherited pipes cannot hang forever or validate a stale receipt', {
+  skip: process.platform === 'win32' ? 'Windows Node inherited stdio closes with the parent; live-parent tree coverage runs above' : false,
+}, async () => {
+  const root = fixture();
+  const pidFile = path.join(root, 'pipe-owner.pid');
+  let pid;
+  try {
+    mkdirSync(path.join(root, 'tmp/preflight'), { recursive: true });
+    writeFileSync(path.join(root, 'tmp/preflight/project-report.json'), '{stale receipt must not be consumed');
+    const code = `const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit',windowsHide:true});require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(c.pid));process.exit(0);`;
+    const start = performance.now();
+    await assert.rejects(runLogged(process.execPath, ['-e', code], root, {
+      timeoutMs: 1200, receiptIdentity: { base: 'a'.repeat(40), head: 'b'.repeat(40), event: 'push' }, requireReceipt: true,
+    }), error => {
+      assert.ok(error.executionFailure.causes.includes('execution-timeout'));
+      assert.equal(error.projectReceipt.status, 'unavailable');
+      return true;
+    });
+    assert.ok(performance.now() - start < 12000, 'bounded drain after cancellation');
+  } finally {
+    if (existsSync(pidFile)) pid = Number(readFileSync(pidFile, 'utf8'));
+    if (pid) { try { process.kill(pid); } catch {} }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('redactor masks literal overlapping and multiline secrets at every chunk boundary', () => {
   const secret = 'fixture.*[sensitive]$value\nsecond-line';

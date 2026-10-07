@@ -5,12 +5,38 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { checkSetup } from '../src/readiness.mjs';
 
 import { assessProtection, assessPushObligations, cleanGitEnvironment, formatPlan, git, parsePushUpdates, planEventContext, preflightConfiguration, projectPreflight, validatePreflightConfiguration, validateProjectPlan, validateProjectReceipt, ZERO_SHA } from '../src/project.mjs';
 
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const C = 'c'.repeat(40);
+
+test('read-only setup uses committed configuration without executing adapters or certifying dependencies', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'guard-setup-'));
+  const commit = () => { git(root, ['add', '.']); git(root, ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture']); };
+  try {
+    git(root, ['init', '-q']);
+    writeFileSync(path.join(root, 'entry.mjs'), 'throw new Error("must not execute")');
+    commit();
+    assert.equal(checkSetup(root).outcome, 'unconfigured');
+    writeFileSync(path.join(root, '.ci-local-guard.json'), JSON.stringify({ schemaVersion: 'ci-local-guard/project/v1',
+      preflight: { entrypoint: 'entry.mjs', dependencies: 'none', receipt: 'guard-v1' } }));
+    assert.equal(checkSetup(root).outcome, 'unconfigured');
+    commit();
+    const before = git(root, ['status', '--porcelain']);
+    const report = checkSetup(root);
+    assert.equal(report.outcome, 'configured');
+    assert.equal(report.dependencies.status, 'unknown');
+    assert.equal(report.externalTools.gh.authentication, 'unverified');
+    assert.equal(git(root, ['status', '--porcelain']), before);
+    writeFileSync(path.join(root, '.ci-local-guard.json'), '{}');
+    assert.equal(checkSetup(root).outcome, 'configured');
+    commit();
+    assert.equal(checkSetup(root).outcome, 'blocked');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test('local push policy requires exact owner/check IDs, fresh receipt and selected applicability; never certifies Hosted CI', async () => {
   const { validatePushPolicy, assessLocalPushPolicy } = await import('../src/project.mjs');

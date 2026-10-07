@@ -5,6 +5,9 @@
 Source repository is public under MIT; no versioned Release or registry publication yet. The version is owned by package.json.
 
 ### Added
+- Read-only `doctor --check --json` separates committed setup from unverified dependencies and Hosted checks.
+- Project-owned self-preflight and short repository agent entrypoint.
+- Bounded execution (default 900 seconds), cancellation, owned process-tree termination and retained-checkout diagnostics.
 - Public onboarding with a non-empty offline timing demo, English entry point and copyable agent handoff.
 - Exact-commit local preflight, bounded logs and validated project receipts.
 - Explicit project-owned plans and local push policies; missing evidence blocks push.
