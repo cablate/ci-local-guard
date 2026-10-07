@@ -501,7 +501,7 @@ test('Git lookup targets the requested repo even when a hook exports a different
     execFileSync('git', ['init', '-q', source], { env: cleanGitEnvironment() });
     execFileSync('git', ['init', '-q', target], { env: cleanGitEnvironment() });
     process.env.GIT_DIR = path.join(source, '.git');
-    assert.equal(realpathSync(git(target, ['rev-parse', '--show-toplevel'])), realpathSync(target));
+    assert.equal(realpathSync.native(git(target, ['rev-parse', '--show-toplevel'])), realpathSync.native(target));
   } finally {
     if (original === undefined) delete process.env.GIT_DIR;
     else process.env.GIT_DIR = original;
