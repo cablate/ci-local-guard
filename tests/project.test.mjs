@@ -286,7 +286,7 @@ test('private package allowlist excludes evidence/fixtures and installs a usable
     const output = process.platform === 'win32'
       ? execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'node_modules\\.bin\\ci-local-guard.cmd --help'], { cwd: consumer, encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true, timeout: 10000 })
       : execFileSync(bin, ['--help'], { cwd: consumer, encoding: 'utf8', timeout: 10000 });
-    assert.match(output, /private candidate/);
+    assert.match(output, /public-experimental/);
     assert.match(output, /compare-runs/);
     const guidePath = output.match(/^AI guide: (.+)$/m)?.[1].trim();
     assert.equal(guidePath, path.join(consumer, 'node_modules', 'ci-local-guard', 'README.md'));

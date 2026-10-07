@@ -2,7 +2,7 @@
 status: public-experimental
 as_of: 2026-10-08
 owner: CI Local Guard maintainers
-next_action: 驗證有界執行與自身接入，完成 CI 對照實驗、現行 IE 隔離接入與無歷史 AI 採用驗收；未驗不宣稱完成。
+next_action: 審查 agent-dogfood 交付；獨立 consumer 的完整檢查失敗留給該專案診斷，不擴張 Guard 或降低保護。
 ---
 
 # CI Local Guard
@@ -48,7 +48,28 @@ Use Node >=22.13.0 <23 and Git. Clone this public repository, then run `node cli
 
 ### 本輪 dogfood 狀態
 
-採用入口、可靠執行與自身 adapter 正在實作／驗證。後續依序為自身 CI 單一變因實驗、現行 IE 獨立接入、無歷史 AI 驗收；尚不宣稱完成或節省。測試責任保持：真實 Git hooks、封裝安裝、exact checkout、receipt 身份、日誌與遮蔽，以及 Windows／Ubuntu。
+2026-10-08：採用入口、有界執行、唯讀就緒檢查與自身 adapter 已實作。Hosted 的 103 個測試在 Ubuntu 全通過；Windows 102 通過、1 個 POSIX 已退出父程序管線案例明確跳過，活父程序樹／取消 handler／清理案例照常驗證。強制終止 Guard 本身與 OS console signal delivery 不在這些測試證據內。
+
+無對話歷史的新 AI session 從 README／AGENTS 自行找到入口，以 base `5872ff0c`、head `53d556c7` 執行自身完整預檢：receipt validated、checkout matched、product success、outcome incomplete；另在缺配置 clone 正確判定 unconfigured，讀真實 CI metadata 時沒有宣稱節省。這是一次相同執行環境的採用實驗，不代表所有 AI 平台已驗。
+
+另一個真實 Vue/Vite consumer 已以專案 adapter 包裝既有完整檢查，通用 receipt／SHA／日誌／cleanup 都驗證成功；完整檢查仍失敗，沒有改 gate 或重試到綠。consumer 未合併／發布，Guard 不包含該應用的程式或專用 schema。
+
+### 自身 CI 單一變因實驗：未達門檻，撤回候選
+
+同一 branch、workflow、push event、Windows／Ubuntu 與完整 assertions；每組三個獨立成功 runs，交錯執行。唯一變因為 hooks fixture 用一次寫入取代四次 `git config` 程序；每組的 Git tree 皆核對一致。無 cache、矩陣、工作流或 assertion 變更。
+
+| 組別／SHA | run | wall 秒 | job-sum 秒 |
+|---|---|---:|---:|
+| baseline / 53d556c7 | [37702508171](https://github.com/cablate/ci-local-guard/actions/runs/37702508171) | 140 | 163 |
+| candidate / f207c638 | [37703275373](https://github.com/cablate/ci-local-guard/actions/runs/37703275373) | 117 | 136 |
+| baseline / 26b1c1b3 | [37703495264](https://github.com/cablate/ci-local-guard/actions/runs/37703495264) | 88 | 110 |
+| candidate / f5a5ee84 | [37703657150](https://github.com/cablate/ci-local-guard/actions/runs/37703657150) | 121 | 141 |
+| baseline / 1c05ae86 | [37703872306](https://github.com/cablate/ci-local-guard/actions/runs/37703872306) | 131 | 150 |
+| candidate / 6157ffc5 | [37704097209](https://github.com/cablate/ci-local-guard/actions/runs/37704097209) | 121 | 143 |
+
+Guard 的 collect／inspect／audit／compare 全部實際使用；comparisonStatus 為 observed-context-matched，但 attributionStatus 仍 unverified、savings 為 null。wall 中位數 131→121 秒（約 7.6%）、平均數兩組同為 119.67 秒；job-sum 中位數 150→141 秒。未達預先約定的 wall 中位數改善 10% 門檻，因此**撤回 fixture 最佳化，不宣稱省費用**。樣本少、baseline 變動大，不能將差異歸因為已證明的節省。
+
+初版候選 [37702981902](https://github.com/cablate/ci-local-guard/actions/runs/37702981902) 因 Windows hooksPath 值被正規化而失敗，沒有納入成功組、也沒有隱藏；修正序列化後才開始 candidate 組，既有 assertion 未改。原始 export、六筆 run／SHA、comparison input/output 與失敗紀錄保存在開發 checkout 的 Git common directory 下 dogfood 目錄；以上連結可重建公開 metadata。
 
 執行逾時、SIGINT／SIGTERM 取消或輸出超限時，工具停止自己啟動的程序樹，不按名稱殺程序，也不重試。若程序終止或 checkout 清理無法確認，失敗 JSON 提供 `retainedCheckout`／`cleanupFailure`；先確認沒有活程序使用它，再人工處理。Windows 已退出父程序的孤兒、故意脫離群組的程序與強制關閉整個 Guard 程序不保證可清理；這不是 sandbox。逾時／取消後的殘留 receipt 不作成功證據。
 

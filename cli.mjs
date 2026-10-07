@@ -349,7 +349,7 @@ async function main() {
       limitation: 'Excludes Node/module startup and final report output; wall time only, not CPU, billing, cold-install or optimization savings evidence.' };
   }
   if ((!verb || ['--help', 'help'].includes(verb)) && rest.length === 0) {
-    process.stdout.write(`CI Local Guard — local preflight and evidence-linked CI diagnostics (private candidate)
+    process.stdout.write(`CI Local Guard — local preflight and evidence-linked CI diagnostics (public-experimental)
 
 Offline (Node 22.13..22.x only; no Git or credentials):
   inspect-runs --input <github-export.json>

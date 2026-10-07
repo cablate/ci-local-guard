@@ -15,11 +15,13 @@ Source repository is public under MIT; no versioned Release or registry publicat
 - AI operating guidance and installed-consumer documentation discovery.
 
 ### Changed
+- Completed a six-run fixture-cost experiment; reverted the candidate because its 7.6% median wall reduction missed the predefined 10% threshold (mean wall unchanged; no attributable savings claim).
 - Removed application-specific script/branch assumptions and external checkout fallback.
 - Removed PASS caching, downstream deployment previews and seven expanded diagnostic commands.
 - Removed the legacy check command. Explicit comparison base is required; plan requires an explicit committed head.
 
 ### Fixed
+- CLI help now identifies the already-public repository as experimental rather than a private candidate.
 - Prevent redaction-delayed stdout/stderr tails from splicing ordinary evidence lines.
 - Compare Windows test paths with native filesystem canonicalization.
 
