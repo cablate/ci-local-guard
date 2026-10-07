@@ -1,6 +1,6 @@
 # Contributing
 
-This private, pre-release CLI is intended for development agents and their human reviewers. User guidance is currently Traditional Chinese; code identifiers, tests and commit messages use English.
+This open-source, experimental CLI is intended for development agents and their human reviewers. User guidance is currently Traditional Chinese; code identifiers, tests and commit messages use English.
 
 ## Develop and test
 
@@ -32,10 +32,10 @@ CLI verbs/options, descriptor/plan/receipt/report schemas and documented environ
 
 ## Issues and sensitive reports
 
-Use this repository's Issues for non-sensitive bugs; currently only authorized collaborators can access this private repo. Include the package version, Node/Git versions, OS, reproduction, exit code and sanitized report. Remove private paths, tokens and raw logs. A private vulnerability-report channel has not been verified: do not put exploit details or secrets in public Issues when the repo becomes public. Establish that channel before public release.
+Use this repository's Issues for non-sensitive bugs. Include the package version, Node/Git versions, OS, reproduction, exit code and sanitized report. Remove private paths, tokens and raw logs. Use [GitHub private vulnerability reporting](https://github.com/cablate/ci-local-guard/security/advisories/new) for sensitive findings; see [security reporting guidance](https://github.com/cablate/ci-local-guard/security/policy).
 
 ## Releasing (not enabled)
 
-The only version source is package.json. Keep private: true until publication is authorized. No npm release or GitHub Release has been issued. Maintain CHANGELOG/Unreleased; choose the next version before release, and document migration for breaking interfaces. Breaking stable interfaces require a major version. Do not rename the package without an explicit migration decision.
+The only version source is package.json. Keep private: true to block npm publication; this does not control GitHub visibility. No npm release or GitHub Release has been issued. Maintain CHANGELOG/Unreleased; choose the next version before release, and document migration for breaking interfaces. Breaking stable interfaces require a major version. Do not rename the package without an explicit migration decision.
 
 A release requires clean-clone/install tests, cross-platform Hosted CI, review of current files and Git history, a working private security-report channel and maintainer approval. The workflow runs offline tests on Windows and Ubuntu; verify its actual result before claiming Hosted success. Tags, Releases, registry publication, history rewrites and repository visibility/settings changes need explicit approval.

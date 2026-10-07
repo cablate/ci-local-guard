@@ -1,13 +1,13 @@
 ---
-status: scope-reduced-private-candidate
+status: public-experimental
 as_of: 2026-10-07
 owner: CI Local Guard maintainers
-next_action: 驗證 GitHub Windows/Linux CI；確認歷史作者 Email 公開方式後，改為公開並啟用私下漏洞回報。
+next_action: 收集外部 AI 採用回饋及 CI 實例；不減少必要保護、不宣稱未證明的節省。
 ---
 
 # CI Local Guard
 
-獨立 private repository：[cablate/ci-local-guard](https://github.com/cablate/ci-local-guard)。本工具有自己的 Git 歷史與 origin，不依賴父層 workspace；仍未公開或 registry 發布。
+獨立開源 repository：[cablate/ci-local-guard](https://github.com/cablate/ci-local-guard)。本工具有自己的 Git 歷史與 origin，不依賴父層 workspace；MIT 授權，GitHub 已公開；沒有 registry 發布。
 
 **push 前檢查真正送出的 commit；用真實 CI runs 找出值得改善的耗時。必要保護不能減少。**
 
@@ -15,7 +15,7 @@ next_action: 驗證 GitHub Windows/Linux CI；確認歷史作者 Email 公開方
 
 **先選你的情境：**本機用 plan／preflight；CI 分析用 collect-run(s) → inspect-runs／audit-runs → compare-runs。兩條路徑獨立，收集 CI 不需要本機 adapter。
 
-**採用底線：**MIT private 候選；22 個候選檔案已完成靜態安全審查，未發現可報告漏洞；不代表安全保證。private: true 仍保留。工具不是惡意程式 sandbox；必須信任被執行的專案程式。GitHub 公開已獲授權，仍待歷史個資決策與 Hosted 驗證；不發布 npm 套件。
+**採用底線：**MIT 實驗性工具；公開前候選原始碼已完成靜態安全審查，未發現可報告漏洞；不代表安全保證。private: true 仍保留。工具不是惡意程式 sandbox；必須信任被執行的專案程式。Windows／Ubuntu Hosted 測試各 95/95 通過；不發布 npm 套件。
 
 ## 安裝
 
@@ -261,13 +261,15 @@ ci-local-guard compare-runs --input comparison.json
 
 分開 execution wall time 與 job-sum；相同 profile 才給描述性變化。失敗／取消／缺證據不默默排除。checkout、scope、cache、保護與 intervention 沒有證明，attributable savings 固定 null；現在**沒有已證明的 CI 節省**。耗時排名是調查起點，不是自動刪除責任的理由。
 
-## 開源準備狀態
+## 驗證與發布狀態
 
-MIT；目前仍為 private 候選。原始碼靜態安全審查涵蓋 22 個候選檔案，沒有可報告漏洞；不包含 Git 歷史、遠端權限或動態 exploit 驗證，不是安全保證。工具不是 sandbox，adapter 與 actionlint cache 必須可信。
+MIT；GitHub 已公開。Windows／Ubuntu 的 [GitHub CI](https://github.com/cablate/ci-local-guard/actions) 各 95/95 通過，包含離線安裝／移除、Git hook、exact checkout、receipt、遮罩與失敗阻擋。workflow 使用 SHA-pinned actions、唯讀 token、不保留 checkout 認證。macOS／arm64 尚未驗證。
 
-乾淨 private clone 加候選檔案後，Windows 安裝／移除與診斷測試 51/51、Linux 全套 94/94 通過。GitHub Windows/Linux workflow 使用 SHA-pinned actions、唯讀 token；Hosted 結果待推送後確認。macOS／arm64 尚未驗證。
+公開前 22 個候選檔案的靜態安全審查沒有可報告漏洞；不包含 Git 歷史、遠端權限或動態 exploit 驗證，不是安全保證。其後修正了 Hosted 發現的日誌交錯與 Windows 路徑測試，並新增回歸測試。工具不是 sandbox，adapter 與 actionlint cache 必須可信；遮罩只是 best effort，日誌不保證 stdout／stderr 的全域時間順序。
 
-公開前剩餘：歷史作者 Email 保留或改寫的維護者決策，以及公開後啟用 GitHub 私下漏洞回報。沒有 tag、Release 或 npm 發布；package.json 的 private:true 僅阻止 registry 發布。CI 節省與陌生 AI 採用成效仍未證明。
+敏感漏洞請用 [GitHub 私下漏洞回報](https://github.com/cablate/ci-local-guard/security/advisories/new)，非敏感問題用 [Issues](https://github.com/cablate/ci-local-guard/issues)。不要公開私人路徑、token 或原始日誌。
+
+沒有 tag、Release 或 npm 發布；package.json 的 private:true 僅阻止 registry 發布。CI 節省與陌生 AI 採用成效仍未證明。下一步以真實使用回饋改善工具，不新增專案耦合或自動放行。
 
 ## 已驗證能力與限制
 

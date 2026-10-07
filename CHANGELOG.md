@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — private candidate
+## Unreleased — experimental
 
-No public release or registry publication yet. The version is owned by package.json.
+Source repository is public under MIT; no versioned Release or registry publication yet. The version is owned by package.json.
 
 ### Added
 - Exact-commit local preflight, bounded logs and validated project receipts.
@@ -14,6 +14,10 @@ No public release or registry publication yet. The version is owned by package.j
 - Removed application-specific script/branch assumptions and external checkout fallback.
 - Removed PASS caching, downstream deployment previews and seven expanded diagnostic commands.
 - Removed the legacy check command. Explicit comparison base is required; plan requires an explicit committed head.
+
+### Fixed
+- Prevent redaction-delayed stdout/stderr tails from splicing ordinary evidence lines.
+- Compare Windows test paths with native filesystem canonicalization.
 
 ### Migration
 - Consumers relying on implicit adapters must commit their own .ci-local-guard.json and scripts. There is no compatibility fallback.
