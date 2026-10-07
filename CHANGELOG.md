@@ -1,0 +1,20 @@
+# Changelog
+
+## Unreleased — private candidate
+
+No public release or registry publication yet. The version is owned by package.json.
+
+### Added
+- Exact-commit local preflight, bounded logs and validated project receipts.
+- Explicit project-owned plans and local push policies; missing evidence blocks push.
+- Read-only GitHub Actions run collection and offline timing diagnostics/comparison.
+- AI operating guidance and installed-consumer documentation discovery.
+
+### Changed
+- Removed application-specific script/branch assumptions and external checkout fallback.
+- Removed PASS caching, downstream deployment previews and seven expanded diagnostic commands.
+- Removed the legacy check command. Explicit comparison base is required; plan requires an explicit committed head.
+
+### Migration
+- Consumers relying on implicit adapters must commit their own .ci-local-guard.json and scripts. There is no compatibility fallback.
+- Standalone execution success can still be incomplete; consumers must read reports rather than interpret exit zero or PASS text as full CI completion.

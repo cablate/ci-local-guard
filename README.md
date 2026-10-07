@@ -2,7 +2,7 @@
 status: scope-reduced-private-candidate
 as_of: 2026-10-07
 owner: CI Local Guard maintainers
-next_action: 以陌生 AI 的首次採用驗證下列操作引導；先檢查是否找得到入口、能判讀未完成與失敗，不增加專案耦合或 Agent 框架。
+next_action: 驗證 GitHub Windows/Linux CI；確認歷史作者 Email 公開方式後，改為公開並啟用私下漏洞回報。
 ---
 
 # CI Local Guard
@@ -15,7 +15,7 @@ next_action: 以陌生 AI 的首次採用驗證下列操作引導；先檢查是
 
 **先選你的情境：**本機用 plan／preflight；CI 分析用 collect-run(s) → inspect-runs／audit-runs → compare-runs。兩條路徑獨立，收集 CI 不需要本機 adapter。
 
-**採用底線：**MIT private 候選；正式安全掃描未開始，沒有公開發布安全放行。private: true 仍保留。工具不是惡意程式 sandbox；必須信任被執行的專案程式。未授權發布、push 或更改 Hosted 設定。
+**採用底線：**MIT private 候選；22 個候選檔案已完成靜態安全審查，未發現可報告漏洞；不代表安全保證。private: true 仍保留。工具不是惡意程式 sandbox；必須信任被執行的專案程式。GitHub 公開已獲授權，仍待歷史個資決策與 Hosted 驗證；不發布 npm 套件。
 
 ## 安裝
 
@@ -30,6 +30,55 @@ npm install "<tarball-path>" --offline --ignore-scripts --no-audit --no-fund --p
 ```
 
 本工具 MIT 不取代 Node／Git／gh／actionlint／專案程式各自授權。package allowlist 不是完整 secret scanner。
+
+## 五分鐘首次執行（不登入、不碰專案設定）
+
+有 private repo 存取權者先 clone；尚未公開，沒有 registry 安裝或 Release 可下載：
+
+```sh
+git clone https://github.com/cablate/ci-local-guard.git
+cd ci-local-guard
+node cli.mjs --help
+node --input-type=module -e "import {writeFileSync} from 'node:fs'; writeFileSync('empty-export.json', JSON.stringify({schemaVersion:'ci-local-guard/github-export/v1',repository:'example/project',runs:[]}));"
+node cli.mjs inspect-runs --input empty-export.json
+```
+
+預期 stdout 是 JSON，schemaVersion 為 ci-local-guard/run-inspection/v1、runs 為空陣列；只是成功安裝／讀取空資料的 smoke test，不代表任何 CI 已通過或有節省。執行前先確認 Node 版本符合要求。empty-export.json 是自己建立的暫存輸入，示範後可刪除。
+
+## 更新、停用與移除
+
+目前只支援 source clone 或本機 tarball。source checkout 沒有個人修改時用 git pull --ff-only 更新；有修改先自行保存，不用 reset --hard。tarball 使用者須重新 pack 並安裝新的檔案，沒有自動更新或 registry 通道。介面改動見 [CHANGELOG](CHANGELOG.md)。
+
+要停止 hooks：先用 ci-local-guard uninstall-hook --repo <project> 還原本機設定，再移除工具，避免留下指向不存在路徑的 hook。工具不擁有目前 hooksPath 時會拒絕更改，應先查 git config --local --get core.hooksPath，不覆蓋別人的 hooks。
+
+本機 npm consumer 移除方式：npm uninstall ci-local-guard --offline --ignore-scripts --no-audit --no-fund（在安裝目錄）。source 使用者於解除 hooks 後自行移除專用 clone。這些操作不會刪除專案的 .ci-local-guard.json、保留日誌、自訂日誌目錄或 actionlint cache；確認不再需要後，才刪除自己擁有的資料，不遞迴刪除 repo 的 .git。
+
+## 資料、網路與環境變數
+
+沒有內建遙測或自動上傳。collect-run(s) 透過現有 gh 向 github.com 發 GET；doctor 可能從 rhysd/actionlint GitHub Releases 下載與 hash 核對固定 binary。offline diagnostics 本身不連網。專案 adapter 是可信程式，其網路、費用、依賴與副作用由專案負責，工具不提供 sandbox。
+
+| 變數 | 預設／用途 |
+|---|---|
+| CI_LOCAL_GUARD_BASE | 未設定；代替明確 --base，不猜分支。 |
+| CI_LOCAL_GUARD_LOG_DIR | 使用專案 git common directory 下 ci-local-guard/logs；可指定自己擁有的目錄。 |
+| CI_LOCAL_GUARD_KEEP_LOGS | 未設定時清除成功的主執行 log；非空值保留。失敗與已收集的證據可能仍保留。 |
+| CI_LOCAL_GUARD_CACHE | 家目錄 .cache/ci-local-guard；僅 actionlint binary cache，不是 PASS cache。 |
+| ACTIONLINT_BIN | 未設定；可指定既有 binary，doctor 仍核對版本。 |
+| CI_LOCAL_GUARD_EVENT／CI_LOCAL_GUARD_EVENT_CONTEXT | 工具傳給 adapter 的 event／JSON context；caller-declared，不是 Hosted attestation。 |
+
+JSON 可含本機絕對路徑；日誌可含產品輸出。分享前檢查與遮蔽；環境值遮罩不是完整 secret scanner。
+
+## 疑難排解與貢獻
+
+| 症狀 | 先做什麼 |
+|---|---|
+| 找不到 CLI | source 用 node cli.mjs --help；consumer 用其 node_modules/.bin 入口，不假設全域安裝。 |
+| 產品 unavailable | 讀 nextAction；確認 candidate commit 有 descriptor，不採用 dirty 配置。 |
+| exit 0 但 incomplete | 列出實際成功項目與缺失責任，不改成完整 CI 通過。 |
+| git／npm 找不到 | 檢查 PATH；測試需要 Git 與 Node 隨附 npm，不需要 gh 登入。 |
+| checkout／receipt 不相符 | 先查身份與保留的 log；不略過核對或重試到綠。 |
+
+開發、模組地圖、測試與回報方式見 [CONTRIBUTING](CONTRIBUTING.md)。一般 bug 回報附版本、OS、最小重現與去識別 report；不貼 token、私人資料或原始日誌。私下漏洞回報管道尚未確認，公開前必須建立，不假造聯絡信箱或宣稱已啟用。
 
 ## AI 操作入口
 
@@ -212,10 +261,18 @@ ci-local-guard compare-runs --input comparison.json
 
 分開 execution wall time 與 job-sum；相同 profile 才給描述性變化。失敗／取消／缺證據不默默排除。checkout、scope、cache、保護與 intervention 沒有證明，attributable savings 固定 null；現在**沒有已證明的 CI 節省**。耗時排名是調查起點，不是自動刪除責任的理由。
 
-## 目前驗證與刪減狀態
+## 開源準備狀態
+
+MIT；目前仍為 private 候選。原始碼靜態安全審查涵蓋 22 個候選檔案，沒有可報告漏洞；不包含 Git 歷史、遠端權限或動態 exploit 驗證，不是安全保證。工具不是 sandbox，adapter 與 actionlint cache 必須可信。
+
+乾淨 private clone 加候選檔案後，Windows 安裝／移除與診斷測試 51/51、Linux 全套 94/94 通過。GitHub Windows/Linux workflow 使用 SHA-pinned actions、唯讀 token；Hosted 結果待推送後確認。macOS／arm64 尚未驗證。
+
+公開前剩餘：歷史作者 Email 保留或改寫的維護者決策，以及公開後啟用 GitHub 私下漏洞回報。沒有 tag、Release 或 npm 發布；package.json 的 private:true 僅阻止 registry 發布。CI 節省與陌生 AI 採用成效仍未證明。
+
+## 已驗證能力與限制
 
 已移除七個擴張命令、PASS cache、下游部署預覽；本輪再移除硬編碼專案 adapter、分支分類、外部 model fallback 與 check 入口。工具檔案不存應用程式規則；測試 fixture 明確提供自有契約。
 
-先前 Windows／Debian Linux 的 source、offline package、exact checkout、receipt 與失敗阻擋已有驗證。本輪去耦合後 Windows／Debian Linux 全套均 94/94 通過（包含 offline package 與真實 Git hook fixture）。真實未配置專案回傳 unavailable／exit 2、push blocked／exit 1；已配置專案的三項 bounded checks 成功、receipt validated、checkout matched，缺完整 release／CodeQL 仍 incomplete／exit 2。兩個來源 checkout 狀態與 worktree 清單保持不變；macOS／arm64、完整真實應用 CI、Hosted equivalence 與公開安全放行仍未驗。
+先前 Windows／Debian Linux 的 source、offline package、exact checkout、receipt 與失敗阻擋已有驗證。本輪去耦合後 Windows／Debian Linux 全套均 94/94 通過（包含 offline package 與真實 Git hook fixture）。真實未配置專案回傳 unavailable／exit 2、push blocked／exit 1；已配置專案的三項 bounded checks 成功、receipt validated、checkout matched，缺完整 release／CodeQL 仍 incomplete／exit 2。兩個來源 checkout 狀態與 worktree 清單保持不變；macOS／arm64、完整真實應用 CI、Hosted equivalence 仍未驗。
 
 不為消除 coupling 去修改應用程式。原本靠隱含 adapter 的專案會變為 unavailable／push blocked，必須由該專案明確提交契約後才能採用；不保留另一套隱藏相容層。

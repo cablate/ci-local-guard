@@ -216,7 +216,7 @@ test('private package allowlist excludes evidence/fixtures and installs a usable
   mkdirSync(stage); mkdirSync(consumer);
   try {
     const copyFile = (name) => writeFileSync(path.join(stage, name), readFileSync(path.join(source, name)));
-    for (const name of ['cli.mjs', 'README.md', 'package.json', 'LICENSE']) copyFile(name);
+    for (const name of ['cli.mjs', 'README.md', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md']) copyFile(name);
     for (const directory of ['src', 'hooks']) {
       mkdirSync(path.join(stage, directory));
       for (const file of readdirSync(path.join(source, directory))) copyFile(`${directory}/${file}`);
@@ -240,9 +240,9 @@ test('private package allowlist excludes evidence/fixtures and installs a usable
       });
     };
     const packed = JSON.parse(npm(['pack', '--json', '--pack-destination', root], stage))[0];
-    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'cli.mjs', 'package.json', 'LICENSE'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
+    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'cli.mjs', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
     assert.ok(packed.files.some(({ path: file }) => file === 'src/ci-runs.mjs'));
-    for (const file of ['LICENSE', 'README.md', 'hooks/pre-commit', 'hooks/pre-push']) {
+    for (const file of ['LICENSE', 'README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
       assert.ok(packed.files.some((entry) => entry.path === file), `package needs ${file}`);
     }
     npm(['install', path.join(root, packed.filename), '--no-audit', '--no-fund', '--package-lock=false'], consumer);
@@ -337,6 +337,10 @@ test('private package allowlist excludes evidence/fixtures and installs a usable
     assert.equal(report.schemaVersion, 'ci-local-guard/run-inspection/v1');
     assert.equal(report.repository, 'example/project');
     assert.deepEqual(report.runs, []);
+    npm(['uninstall', 'ci-local-guard', '--no-audit', '--no-fund'], consumer);
+    assert.equal(existsSync(path.join(consumer, 'node_modules/ci-local-guard')), false);
+    assert.equal(existsSync(process.platform === 'win32' ? `${bin}.cmd` : bin), false);
+    assert.ok(existsSync(input), 'uninstall preserves consumer input files');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

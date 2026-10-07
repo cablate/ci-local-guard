@@ -11,12 +11,21 @@
     "cli.mjs",
     "src/",
     "hooks/",
-    "README.md"
+    "README.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22.13.0 <23"
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cablate/ci-local-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cablate/ci-local-guard/issues"
   }
 }
