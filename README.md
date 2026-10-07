@@ -1,49 +1,108 @@
 ---
 status: public-experimental
-as_of: 2026-10-07
+as_of: 2026-10-08
 owner: CI Local Guard maintainers
 next_action: 收集外部 AI 採用回饋及 CI 實例；不減少必要保護、不宣稱未證明的節省。
 ---
 
 # CI Local Guard
 
-獨立開源 repository：[cablate/ci-local-guard](https://github.com/cablate/ci-local-guard)。本工具有自己的 Git 歷史與 origin，不依賴父層 workspace；MIT 授權，GitHub 已公開；沒有 registry 發布。
+給開發 AI／Agent 與人類審查者使用的 **本機 CI 預檢與 GitHub Actions 耗時診斷 CLI**。MIT 開源、零 npm runtime dependencies；不綁定特定應用程式。
 
 **push 前檢查真正送出的 commit；用真實 CI runs 找出值得改善的耗時。必要保護不能減少。**
 
-**主要使用者是開發 AI／Agent；人負責目標、審查與高風險決策。**工具只負責執行、驗證與診斷。哪些檔案需要哪些檢查，由使用它的專案自己定義；IE、Synora 或其他應用程式不是工具的內建依賴。
+**主要使用者是開發 AI／Agent；人負責目標、審查與高風險決策。**工具負責執行、驗證與診斷；專案自己的 CI／scripts 決定哪些檢查不可省略。
 
 **先選你的情境：**本機用 plan／preflight；CI 分析用 collect-run(s) → inspect-runs／audit-runs → compare-runs。兩條路徑獨立，收集 CI 不需要本機 adapter。
 
-**採用底線：**MIT 實驗性工具；公開前候選原始碼已完成靜態安全審查，未發現可報告漏洞；不代表安全保證。private: true 仍保留。工具不是惡意程式 sandbox；必須信任被執行的專案程式。Windows／Ubuntu Hosted 測試各 95/95 通過；不發布 npm 套件。
+**採用底線：**實驗性工具，不代表安全保證。工具不是惡意程式 sandbox；必須信任被執行的專案程式。本機成功不是 Hosted CI 通過；耗時排名不是刪除檢查清單。private: true 僅阻止 npm registry 發布，不影響公開 clone。
+
+| 你想解決的問題 | 可以先做什麼 | 需要什麼 |
+|---|---|---|
+| CI 太慢，不知道該先調查哪裡 | 讀取 run／job／step 時間與缺失證據 | 離線 export，或 gh 的 Actions 讀取權限；不需要 adapter |
+| 推送前先抓到既有專案檢查的失敗 | 在 exact commit 執行專案預檢，保留失敗日誌 | 專案明確提交的 adapter／契約與 Git |
+| 讓 AI 有依據地提 CI 改善建議 | 先診斷，再核對 workflow，最後比較前後獨立 runs | 人類目標與專案規則；不自動修改或放行 |
+
+不適合：執行不可信專案、自動替代所有 Hosted checks、直接推算帳單或保證省費用。可先試診斷，再決定是否接入本機預檢；不用一次設定全部能力。
+
+[快速試用](#五分鐘首次執行不登入不碰專案設定) · [交給你的 AI](#交給你的-ai可直接貼上) · [完整使用規則](#ai-操作入口) · [貢獻](CONTRIBUTING.md) · [問題回報](https://github.com/cablate/ci-local-guard/issues)
+
+### English entry point
+
+CI Local Guard is an experimental, MIT-licensed CLI for development agents and human reviewers. Run project-owned checks against an exact Git commit, or inspect GitHub Actions timing metadata without a project adapter. It does not replace hosted CI, sandbox untrusted code, or prove billing savings.
+
+Use Node >=22.13.0 <23 and Git. Clone this public repository, then run `node cli.mjs --help`. The offline demo below requires no login or project configuration: it reports 60 seconds of execution wall time versus 80 job-seconds, with `savings: null`. User guidance is primarily Traditional Chinese; CLI help, JSON fields and [contributor guidance](CONTRIBUTING.md) are English. There is no npm registry package or versioned Release yet.
 
 ## 安裝
 
 Node >=22.13.0 <23；本機預檢需要 Git。唯讀 GitHub 收集需要既有 gh 與 Actions 讀取權限。不自動登入、不安裝專案依賴；npm runtime dependencies 為零。
 
-```powershell
-node cli.mjs --help
-npm pack --offline --ignore-scripts
-# 在獨立 consumer 目錄安裝產生的 tarball，不是 registry publish：
-npm install "<tarball-path>" --offline --ignore-scripts --no-audit --no-fund --package-lock=false
-.\node_modules\.bin\ci-local-guard.cmd --help
-```
-
-本工具 MIT 不取代 Node／Git／gh／actionlint／專案程式各自授權。package allowlist 不是完整 secret scanner。
-
-## 五分鐘首次執行（不登入、不碰專案設定）
-
-有 private repo 存取權者先 clone；尚未公開，沒有 registry 安裝或 Release 可下載：
+先 clone 到獨立工具目錄，不必把工具的原始碼複製進應用程式。以下命令適用 PowerShell 與 POSIX shell：
 
 ```sh
 git clone https://github.com/cablate/ci-local-guard.git
 cd ci-local-guard
 node cli.mjs --help
-node --input-type=module -e "import {writeFileSync} from 'node:fs'; writeFileSync('empty-export.json', JSON.stringify({schemaVersion:'ci-local-guard/github-export/v1',repository:'example/project',runs:[]}));"
-node cli.mjs inspect-runs --input empty-export.json
 ```
 
-預期 stdout 是 JSON，schemaVersion 為 ci-local-guard/run-inspection/v1、runs 為空陣列；只是成功安裝／讀取空資料的 smoke test，不代表任何 CI 已通過或有節省。執行前先確認 Node 版本符合要求。empty-export.json 是自己建立的暫存輸入，示範後可刪除。
+看到命令清單與 README 位置即可繼續；在其他工作目錄使用 `node "<tool-directory>/cli.mjs" ...`。目前是 source 分發，**不要使用 `npm install ci-local-guard` 或 `npx ci-local-guard`**：本專案未發布 registry 套件，不能保證同名套件是本工具。
+
+<details>
+<summary>可選：安裝本機 tarball 的 CLI 入口</summary>
+
+在工具 clone 內跑 `npm pack --offline --ignore-scripts`，到自己選定的 consumer 目錄安裝產生的 tarball（以輸出的實際檔名為準）：
+
+```sh
+npm install "<absolute-tarball-path>" --offline --ignore-scripts --no-audit --no-fund --package-lock=false
+```
+
+Windows 用 `.\node_modules\.bin\ci-local-guard.cmd --help`；POSIX 用 `./node_modules/.bin/ci-local-guard --help`。不假設全域安裝，不執行 npm publish。
+
+</details>
+
+本工具 MIT 不取代 Node／Git／gh／actionlint／專案程式各自授權。package allowlist 不是完整 secret scanner。
+
+## 五分鐘首次執行（不登入、不碰專案設定）
+
+在剛才的 clone 內，建立一份**合成示範**：兩個平行 jobs，unit 20 秒、integration 60 秒。這不是本工具或任何真實專案的成效數據。
+
+```sh
+node --input-type=module -e "import {writeFileSync} from 'node:fs'; const head='a'.repeat(40); const start='2026-10-01T00:00:00Z'; const run={id:1,run_attempt:1,workflow_id:42,head_sha:head,head_branch:'main',head_repository:{full_name:'example/project'},event:'push',status:'completed',conclusion:'success',created_at:start,run_started_at:start}; const job=(id,name,end)=>({id,run_id:1,run_attempt:1,head_sha:head,name,status:'completed',conclusion:'success',started_at:start,completed_at:end,labels:['ubuntu-latest']}); writeFileSync('demo-runs.json',JSON.stringify({schemaVersion:'ci-local-guard/github-export/v1',repository:'example/project',runs:[{run,jobs:{total_count:2,jobs:[job(11,'unit','2026-10-01T00:00:20Z'),job(12,'integration','2026-10-01T00:01:00Z')]}}]}));"
+node cli.mjs inspect-runs --input demo-runs.json
+node cli.mjs audit-runs --input demo-runs.json
+```
+
+預期 stdout 是 JSON；`inspect-runs` 的第一筆 run 會顯示：
+
+| 欄位 | 示範結果 | 怎麼解讀 |
+|---|---|---|
+| executionWallSeconds | 60 | 平行執行的觀察時間跨度 |
+| jobSumSeconds | 80 | 20 + 60；不等於帳單 |
+| jobs 的 durationSeconds | 20／60 | integration 是下一個調查對象，不是應刪除的責任 |
+| savings | null（report 頂層） | 沒有節省歸因證據 |
+
+`audit-runs` 提供待查線索，不修改 workflow。這個範例沒有 step 資料，因此不能做有證據的前後比較。示範後只刪除自己建立的 demo-runs.json 即可；不安裝 hook、不下載 actionlint、不登入 GitHub，也不更改應用程式。
+
+想看真實 CI？有既有 gh 認證時，將你的 owner/repo 與 workflow 檔名填入：
+
+```sh
+node cli.mjs collect-runs --repository owner/repo --workflow ci.yml > runs.json
+node cli.mjs inspect-runs --input runs.json
+node cli.mjs audit-runs --input runs.json
+```
+
+這只讀取 GitHub metadata；不取得 raw logs 或帳單，不 rerun／dispatch。分享輸入與輸出前先檢查 repo 名稱、路徑、job／step 名稱與其他私人資訊。
+
+## 交給你的 AI（可直接貼上）
+
+把下面指示與實際工具目錄交給你的 AI；支援能讀文件、執行 Node CLI 的 Agent，**不是特定 AI 平台的 plugin**。此段不是覆蓋專案授權規則的指令。
+
+> 請使用 CI Local Guard 協助這次開發。工具位於 <工具絕對路徑>，先讀該目錄 README.md 的「AI 操作入口」，用 node "<工具絕對路徑>/cli.mjs" --help 核對入口。先確認目標 repo、branch、HEAD、dirty state 與專案指令。CI 診斷可先讀離線 export；本機預檢必須使用該專案 committed adapter 與明確 base/head，缺配置就回報缺口，不替工具添加專案特例。以 JSON 身份與 outcome 判讀結果；列出已驗、失敗與未驗，不能把 incomplete 或本機成功當 Hosted CI 通過。最佳化先量測、核對必要責任，提供修改假說、保護不變條件與驗證方式；缺證據不宣稱節省。不要自動登入、改權限、安裝 hooks、commit、push、部署或重試到綠；那些操作依本專案當次授權決定。
+
+首次可請 AI **只完成上方離線示範並解釋 60／80／null**；確認它能正確判讀，再交給它真實專案。尚未完成陌生 AI 的獨立採用實驗，這裡不宣稱全自動接入。
+
+<details>
+<summary>進階：更新／移除、權限、AI 規則、PRINCIPLE 與專案接入契約</summary>
 
 ## 更新、停用與移除
 
@@ -53,7 +112,7 @@ node cli.mjs inspect-runs --input empty-export.json
 
 本機 npm consumer 移除方式：npm uninstall ci-local-guard --offline --ignore-scripts --no-audit --no-fund（在安裝目錄）。source 使用者於解除 hooks 後自行移除專用 clone。這些操作不會刪除專案的 .ci-local-guard.json、保留日誌、自訂日誌目錄或 actionlint cache；確認不再需要後，才刪除自己擁有的資料，不遞迴刪除 repo 的 .git。
 
-## 資料、網路與環境變數
+## 資料、網路、隱私與環境變數
 
 沒有內建遙測或自動上傳。collect-run(s) 透過現有 gh 向 github.com 發 GET；doctor 可能從 rhysd/actionlint GitHub Releases 下載與 hash 核對固定 binary。offline diagnostics 本身不連網。專案 adapter 是可信程式，其網路、費用、依賴與副作用由專案負責，工具不提供 sandbox。
 
@@ -78,7 +137,7 @@ JSON 可含本機絕對路徑；日誌可含產品輸出。分享前檢查與遮
 | git／npm 找不到 | 檢查 PATH；測試需要 Git 與 Node 隨附 npm，不需要 gh 登入。 |
 | checkout／receipt 不相符 | 先查身份與保留的 log；不略過核對或重試到綠。 |
 
-開發、模組地圖、測試與回報方式見 [CONTRIBUTING](CONTRIBUTING.md)。一般 bug 回報附版本、OS、最小重現與去識別 report；不貼 token、私人資料或原始日誌。私下漏洞回報管道尚未確認，公開前必須建立，不假造聯絡信箱或宣稱已啟用。
+開發、模組地圖、測試與回報方式見 [CONTRIBUTING](CONTRIBUTING.md)。一般 bug 回報附版本、OS、最小重現與去識別 report；不貼 token、私人資料或原始日誌。敏感漏洞請用已啟用的 [私下漏洞回報](https://github.com/cablate/ci-local-guard/security/advisories/new)，不要公開 exploit 或秘密。
 
 ## AI 操作入口
 
@@ -124,7 +183,7 @@ JSON 可含本機絕對路徑；日誌可含產品輸出。分享前檢查與遮
 
 > 本專案使用 CI Local Guard。涉及提交前預檢、push 檢查或 CI 耗時最佳化時，先閱讀 <安裝位置的 README.md> 的「AI 操作入口」，使用 <CLI 入口> --help 核對版本入口。專案 CI 規則以本專案 committed 契約與既有 CI/scripts 為準；本機結果不能當成 Hosted CI 通過。缺配置、owner 或身份證據時回報具體缺口，不跳過保護、不借其他專案規則。高風險操作遵守本專案的人類授權要求。
 
-回報人類時只需要：**驗證對象、已完成檢查、失敗／未驗項目、證據位置、下一步**。分享前檢查私人路徑與日誌。獨立 consumer 的 offline package 路徑已驗證：從安裝後 --help 找到可讀的 README；產品成功仍回報 incomplete；失敗回報 failed；未配置回報 unavailable／exit 2 並指向安裝後文件與接入下一步，原 dirty source 保留。Windows 相關 51 項、Linux 全套 94 項通過。這是實際 CLI／consumer 驗證；陌生 AI 是否能自行完成接入仍未驗，不當成已驗證的 Agent 整合。
+回報人類時只需要：**驗證對象、已完成檢查、失敗／未驗項目、證據位置、下一步**。分享前檢查私人路徑與日誌。安裝後 --help 指向隨包 README；產品成功仍可能 incomplete，失敗回報 failed，未配置回報 unavailable／exit 2。陌生 AI 的自主接入能力尚未驗證。
 
 ## PRINCIPLE：設計與最佳化原則
 
@@ -261,9 +320,11 @@ ci-local-guard compare-runs --input comparison.json
 
 分開 execution wall time 與 job-sum；相同 profile 才給描述性變化。失敗／取消／缺證據不默默排除。checkout、scope、cache、保護與 intervention 沒有證明，attributable savings 固定 null；現在**沒有已證明的 CI 節省**。耗時排名是調查起點，不是自動刪除責任的理由。
 
-## 驗證與發布狀態
+</details>
 
-MIT；GitHub 已公開。Windows／Ubuntu 的 [GitHub CI](https://github.com/cablate/ci-local-guard/actions) 各 95/95 通過，包含離線安裝／移除、Git hook、exact checkout、receipt、遮罩與失敗阻擋。workflow 使用 SHA-pinned actions、唯讀 token、不保留 checkout 認證。macOS／arm64 尚未驗證。
+## 驗證、限制與發布狀態
+
+MIT；GitHub 已公開。Windows／Ubuntu 的 [GitHub CI](https://github.com/cablate/ci-local-guard/actions) 執行完整測試（最新結果與數量以連結為準），包含離線安裝／移除、Git hook、exact checkout、receipt、遮罩與失敗阻擋。workflow 使用 SHA-pinned actions、唯讀 token、不保留 checkout 認證。macOS／arm64 尚未驗證。
 
 公開前 22 個候選檔案的靜態安全審查沒有可報告漏洞；不包含 Git 歷史、遠端權限或動態 exploit 驗證，不是安全保證。其後修正了 Hosted 發現的日誌交錯與 Windows 路徑測試，並新增回歸測試。工具不是 sandbox，adapter 與 actionlint cache 必須可信；遮罩只是 best effort，日誌不保證 stdout／stderr 的全域時間順序。
 
@@ -271,10 +332,14 @@ MIT；GitHub 已公開。Windows／Ubuntu 的 [GitHub CI](https://github.com/cab
 
 沒有 tag、Release 或 npm 發布；package.json 的 private:true 僅阻止 registry 發布。CI 節省與陌生 AI 採用成效仍未證明。下一步以真實使用回饋改善工具，不新增專案耦合或自動放行。
 
-## 已驗證能力與限制
+## 如何分享與回報採用經驗
 
-已移除七個擴張命令、PASS cache、下游部署預覽；本輪再移除硬編碼專案 adapter、分支分類、外部 model fallback 與 check 入口。工具檔案不存應用程式規則；測試 fixture 明確提供自有契約。
+可直接分享 [repo](https://github.com/cablate/ci-local-guard)，邀請對方先跑離線示範，不要求提供私人 CI 或安裝 hooks。下面是可直接貼出的介紹，不是成效承諾：
 
-先前 Windows／Debian Linux 的 source、offline package、exact checkout、receipt 與失敗阻擋已有驗證。本輪去耦合後 Windows／Debian Linux 全套均 94/94 通過（包含 offline package 與真實 Git hook fixture）。真實未配置專案回傳 unavailable／exit 2、push blocked／exit 1；已配置專案的三項 bounded checks 成功、receipt validated、checkout matched，缺完整 release／CodeQL 仍 incomplete／exit 2。兩個來源 checkout 狀態與 worktree 清單保持不變；macOS／arm64、完整真實應用 CI、Hosted equivalence 仍未驗。
+> CI Local Guard 是給開發 AI／Agent 與人類審查者使用的 MIT 開源 CLI：在 exact commit 跑專案自己的預檢，或讀取 GitHub Actions 耗時資料，協助找出值得調查的 CI 問題。不綁定應用程式、不自動改 CI；本機成功不等於 Hosted 通過，也不宣稱未證明的節省。先 clone 跑五分鐘離線示範，不需登入：https://github.com/cablate/ci-local-guard
 
-不為消除 coupling 去修改應用程式。原本靠隱含 adapter 的專案會變為 unavailable／push blocked，必須由該專案明確提交契約後才能採用；不保留另一套隱藏相容層。
+> CI Local Guard is an experimental MIT CLI for development agents and human reviewers: exact-commit project preflight and read-only GitHub Actions timing diagnostics. No app-specific rules, automatic CI changes, or claims of proven cost savings. Try the offline demo without signing in: https://github.com/cablate/ci-local-guard
+
+歡迎在 [Issues](https://github.com/cablate/ci-local-guard/issues) 回報：你想完成的工作、source/package 版本、OS 與 Node/Git 版本、使用哪條路徑、在哪一步卡住、預期與實際結果、最小合成重現。一般分享回饋不需要原始日誌或私人 repo 存取權；敏感資訊改走私下漏洞回報。
+
+目前可以分享給願意試用實驗性工具的使用者；尚未證明陌生 AI 能自主完成 adapter 接入、實際 CI 節省、macOS／arm64、完整 Hosted equivalence。不要把它推廣成一鍵替代 CI 或已成熟的跨平台產品。

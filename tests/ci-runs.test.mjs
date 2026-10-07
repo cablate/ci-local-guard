@@ -30,6 +30,32 @@ test('README diagnostic JSON examples obey the public contracts and do not asser
 
 });
 
+test('public README offline demo works through the CLI without provider access', () => {
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const script = readme.match(/node --input-type=module -e "([^"\r\n]*writeFileSync\('demo-runs\.json'[^"\r\n]*)"/)?.[1];
+  assert.ok(script, 'README must contain the copyable non-empty demo');
+  assert.doesNotMatch(readme, /尚未公開|有 private repo 存取權者|私下漏洞回報管道尚未確認/);
+  const root = mkdtempSync(path.join(os.tmpdir(), 'guard-readme-demo-'));
+  const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url));
+  // Deliberately no gh on PATH: this is a no-login, offline user journey.
+  const options = { cwd: root, encoding: 'utf8', env: { ...process.env, PATH: '' } };
+  try {
+    const generated = spawnSync(process.execPath, ['--input-type=module', '-e', script], options);
+    assert.equal(generated.status, 0, generated.stderr);
+    const inspect = spawnSync(process.execPath, [cli, 'inspect-runs', '--input', 'demo-runs.json'], options);
+    assert.equal(inspect.status, 0, inspect.stderr);
+    const report = JSON.parse(inspect.stdout);
+    assert.equal(report.runs[0].executionWallSeconds, 60);
+    assert.equal(report.runs[0].jobSumSeconds, 80);
+    assert.deepEqual(report.runs[0].jobs.map((job) => job.durationSeconds), [20, 60]);
+    assert.equal(report.savings, null);
+    const audit = spawnSync(process.execPath, [cli, 'audit-runs', '--input', 'demo-runs.json'], options);
+    assert.equal(audit.status, 0, audit.stderr);
+    assert.equal(JSON.parse(audit.stdout).savings, null);
+    assert.deepEqual(JSON.parse(audit.stdout).automaticChanges, []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 function collectorFixture({ attempt = 1, count = 2 } = {}) {
   const input = fixture();
   const run = { ...input.runs[0].run, run_attempt: attempt, workflow_id: 42,
