@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -14,10 +14,9 @@ function fixtureRepo() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'ci-local-guard-hooks-'));
   const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', env: cleanGitEnvironment() });
   git('init', '-q', '-b', 'dev');
-  git('config', 'user.name', 'Fixture');
-  git('config', 'user.email', 'fixture@example.invalid');
-  git('config', 'core.autocrlf', 'false');
-  git('config', 'core.hooksPath', path.join(root, '.no-hooks'));
+  // Isolated fixture only: one write replaces four configuration-only processes.
+  // Real git init/commit/hook execution and every assertion remain unchanged.
+  appendFileSync(path.join(root, '.git/config'), `\n[user]\n\tname = Fixture\n\temail = fixture@example.invalid\n[core]\n\tautocrlf = false\n\thooksPath = ${JSON.stringify(path.join(root, '.no-hooks').replaceAll('\\', '/'))}\n`);
   return { root, git };
 }
 
