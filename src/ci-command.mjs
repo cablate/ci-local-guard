@@ -5,6 +5,7 @@ import { replayCi, replayOptions, summarizeReplay } from './ci-replay.mjs';
 import { summarizeVerify, verifyCi, verifyOptions } from './ci-verify.mjs';
 import { historyCi, historyOptions, summarizeHistory } from './ci-history.mjs';
 import { locateCi, locateOptions, summarizeLocate } from './ci-locate.mjs';
+import { diffCi, diffOptions, summarizeDiff } from './ci-diff.mjs';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 
 // New namespace, independent of legacy report envelopes and exit contracts.
@@ -13,8 +14,13 @@ export async function ciCommand(args) {
   let report;
   let summary = false;
   try {
-    if (!['discover', 'check', 'replay', 'verify', 'history', 'locate'].includes(args[0])) throw new Error('unsupported-ci-command');
-    if (args[0] === 'locate') {
+    if (!['discover', 'check', 'replay', 'verify', 'history', 'locate', 'diff'].includes(args[0])) throw new Error('unsupported-ci-command');
+    if (args[0] === 'diff') {
+      const opts = diffOptions(args.slice(1));
+      summary = opts.summary;
+      if (opts.output) save = reserveReportOutput(opts.output);
+      report = await diffCi(opts);
+    } else if (args[0] === 'locate') {
       const opts = locateOptions(args.slice(1));
       summary = opts.summary;
       if (opts.output) save = reserveReportOutput(opts.output);
@@ -56,17 +62,17 @@ export async function ciCommand(args) {
     }
   } catch (error) {
     // Neither provider stderr nor arbitrary Git/configuration data enters JSON.
-    const kind = { check: ['ci-check', 'top-level-github-workflow-static-baseline'], replay: ['ci-replay', 'local-act-replay-of-one-job'], verify: ['ci-verify', 'pre-push-local-verification'], history: ['ci-history', 'hosted-failure-and-timing-history'], locate: ['ci-locate', 'hosted-failure-location'] }[args[0]]
+    const kind = { check: ['ci-check', 'top-level-github-workflow-static-baseline'], replay: ['ci-replay', 'local-act-replay-of-one-job'], verify: ['ci-verify', 'pre-push-local-verification'], history: ['ci-history', 'hosted-failure-and-timing-history'], locate: ['ci-locate', 'hosted-failure-location'], diff: ['ci-diff', 'workflow-change-coverage'] }[args[0]]
       || ['ci-inventory', 'committed-source-inventory'];
-    report = { schemaVersion: `ci-local-guard/${kind[0]}/v1`, command: `ci ${['check', 'replay', 'verify', 'history', 'locate'].includes(args[0]) ? args[0] : 'discover'}`, identity: null,
+    report = { schemaVersion: `ci-local-guard/${kind[0]}/v1`, command: `ci ${['check', 'replay', 'verify', 'history', 'locate', 'diff'].includes(args[0]) ? args[0] : 'discover'}`, identity: null,
       outcome: 'blocked', scope: kind[1],
-      issues: [{ code: error.reportOutputFailure || error.replayCode || error.verifyCode || error.historyCode || error.locateCode || (/^[a-z-]+$/.test(error.message) ? error.message : 'discovery-failed') }],
+      issues: [{ code: error.reportOutputFailure || error.replayCode || error.verifyCode || error.historyCode || error.locateCode || error.diffCode || (/^[a-z-]+$/.test(error.message) ? error.message : 'discovery-failed') }],
       nextActions: [{ kind: 'review-command-inputs', help: ['--help'], automatic: false }],
     };
   }
   report.reportStorage = { status: 'not-requested', path: null };
   if (save) save(report);
-  const output = summary && report.command === 'ci locate' && report.identity ? summarizeLocate(report) : summary && report.command === 'ci history' && report.identity ? summarizeHistory(report) : summary && report.command === 'ci verify' && report.identity ? summarizeVerify(report) : summary && report.command === 'ci replay' && report.jobs ? summarizeReplay(report) : summary && report.engines ? { ...report,
+  const output = summary && report.command === 'ci diff' && report.identity ? summarizeDiff(report) : summary && report.command === 'ci locate' && report.identity ? summarizeLocate(report) : summary && report.command === 'ci history' && report.identity ? summarizeHistory(report) : summary && report.command === 'ci verify' && report.identity ? summarizeVerify(report) : summary && report.command === 'ci replay' && report.jobs ? summarizeReplay(report) : summary && report.engines ? { ...report,
     workflows: report.workflows.map(({ path, name, analysis, triggers, jobs, issues }) => ({ path, name, analysis,
       ...(triggers ? { events: triggers.map(t => t.event) } : {}), ...(issues ? { issues } : {}),
       ...(jobs ? { jobs: jobs.map(job => ({ id: job.id, runsOn: job.runsOn, needs: job.needs, steps: job.steps.length,
@@ -78,5 +84,5 @@ export async function ciCommand(args) {
     findingCount: report.findings.length, findingsTruncated: report.findings.length > 20 } : report;
   process.stdout.write(JSON.stringify(output) + '\n');
   process.exitCode = report.reportStorage.status === 'failed' ? 3
-    : ['inventoried', 'passed', 'clear-locally', 'measured'].includes(report.outcome) ? 0 : ['findings', 'failed', 'expected-to-fail', 'located'].includes(report.outcome) ? 1 : report.outcome === 'incomplete' ? 3 : 2;
+    : ['inventoried', 'passed', 'clear-locally', 'measured', 'unchanged', 'no-reduction'].includes(report.outcome) ? 0 : ['findings', 'failed', 'expected-to-fail', 'located', 'reduced'].includes(report.outcome) ? 1 : ['incomplete', 'undetermined'].includes(report.outcome) ? 3 : 2;
 }

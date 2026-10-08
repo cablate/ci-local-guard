@@ -398,6 +398,10 @@ Local repository commands (require Git; trust project code before execution):
     After a GitHub run fails: the failed job, step, workflow line and failing tests (file:line, failing assertion line, first error lines), with the
     step's log saved locally for read-evidence paging (read-only, needs gh). Default: the runs for HEAD.
     Exit 0 no failed job, 1 located, 2 blocked, 3 incomplete (log missing, run still in progress or no runs).
+  ci diff --repo <project> [--base <ref>] [--head <ref>] [--summary] [--output <new-file>]
+    After editing workflows: for the same event and changed files, which workflows, jobs, legs and commands run less,
+    more or cannot be determined, with base and head lines. Committed files only; nothing runs.
+    Exit 0 no reduction, 1 reduced, 2 blocked, 3 undetermined.
   ci check --repo <project> [--head <ref>] [--provider actionlint|zizmor] [--binary <trusted-absolute-path>] [--summary] [--output <new-file>]
     Offline static baseline only. Pinned installed tools; no automatic downloads or workflow execution.
   ci replay --repo <project> --workflow .github/workflows/<file> --job <id> [--head <ref>] [--event push|pull_request|workflow_dispatch]

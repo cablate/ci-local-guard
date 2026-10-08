@@ -82,6 +82,32 @@ Each failed job's log is saved under .git/ci-local-guard/hosted-logs and reused 
 
 The failure details are observed output, not a diagnosed cause. A failed setup step is reported as runner-setup, since the project change may not be the cause.
 
+### Check a workflow change
+
+```sh
+node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --base <ref> --head <ref> --summary
+```
+
+diff compares the committed workflows of two commits and answers: for the same event and the same changed files, does CI now check less? Without --base it compares HEAD with the point where it left origin's default branch. For push and pull_request filters, it tries every tracked file alone as the change, for a push to the default branch, a push to another branch, a tag push and pull requests into the default branch or another branch. It then compares jobs, matrix legs, runners, if and continue-on-error settings, and the commands each job runs, including steps of local composite actions.
+
+Each change has an effect:
+
+- reduced: CI checks less, for example a removed matrix leg, a narrower branch or path filter, if: false on a job, a deleted command or continue-on-error: true.
+- unknown: an expression or if-condition changed and cannot be evaluated.
+- review: what runs changed without less coverage, such as a different runner or an edited command.
+- added and neutral: more coverage, or renames, commands moved to another job and action version bumps.
+
+| Result | Meaning | Exit |
+|---|---|---|
+| unchanged | No workflow change affects what CI runs | 0 |
+| no-reduction | Changes found, none reduces coverage | 0 |
+| reduced | At least one change makes CI check less; each is listed with its lines | 1 |
+| blocked | Invalid input or unknown revision | 2 |
+| undetermined | No reduction found, but some changes could not be evaluated | 3 |
+
+A reduction can be intended, such as skipping CI for documentation-only changes. The report lists it so the AI can confirm it with the user rather than discover it later. nextActions suggests replaying the affected job on both commits with ci replay when you want to compare actual runs.
+
 ### Discover the CI
 
 ```sh
@@ -140,7 +166,7 @@ Before running, Guard computes every container, network and volume name act will
 
 For a failed step, failures lists the job, matrix leg, step name, workflow line, the run command, the last lines of its output and any TAP "not ok" test names. These are observed output, not a diagnosed cause. evidence.reader holds read-evidence arguments for that step's section of the retained log. nextActions suggests reading that section, opening the workflow line, running the command in the working tree, and replaying again after committing a fix. A pass covers only coverage.replayed; verify coverage.notReplayed and coverage.notSelected on hosted CI.
 
-Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1, ci-local-guard/ci-replay/v1 and ci-local-guard/ci-locate/v1. Read identity, scope, coverage and issues alongside outcome. Comparing workflow changes and optimization experiments are planned, not implemented. Existing command schemas and exit codes are unchanged.
+Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1, ci-local-guard/ci-replay/v1, ci-local-guard/ci-locate/v1 and ci-local-guard/ci-diff/v1. Read identity, scope, coverage and issues alongside outcome. Running optimization experiments is planned, not implemented. Existing command schemas and exit codes are unchanged.
 
 ## Connect a project
 

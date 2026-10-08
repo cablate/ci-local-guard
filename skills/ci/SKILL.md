@@ -29,6 +29,10 @@ placeholders before running commands; do not substitute a guessed registry packa
   Read verdict and failures: job, step, workflow line and failedTests with file
   and line. Read a test's log section with the listed read-evidence arguments
   instead of the whole log. Fix, commit and run `ci verify` before pushing again.
+- **Changed a workflow:** commit, then run `ci diff --repo <repo> --summary`. Tell
+  the user about every reduced change (a dropped leg, narrower filter, disabled
+  job, deleted command or tolerated failure) and confirm it is intended; read
+  unknown changes yourself.
 - **Uncommitted edits:** use the project's normal targeted tests.
 - **A committed candidate:** use preflight with explicit base and head.
 - **Failed local checks:** inspect the report, then read the relevant log pages.

@@ -82,6 +82,32 @@ locate 用 gh 唯讀讀取 run 的 jobs，以及失敗 jobs 的 log。預設取 
 
 失敗資訊是觀察到的輸出，不是診斷出的原因。準備步驟失敗會標為 runner-setup，因為原因不一定是專案的修改。
 
+### 檢查 workflow 修改
+
+```sh
+node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --base <ref> --head <ref> --summary
+```
+
+diff 比較兩個 commit 已提交的 workflows，回答：同一個事件、同一組變更檔案下，CI 是否檢查得比較少？沒給 --base 時，比較 HEAD 與它從 origin 預設分支分出來的那一點。對 push 與 pull_request 的篩選條件，它把每個追蹤中的檔案單獨當成一次變更，分別試推送到預設分支、推送到其他分支、推送 tag，以及發 pull request 到預設分支或其他分支。接著比較 jobs、matrix legs、runner、if 與 continue-on-error 設定，以及每個 job 執行的命令（包含本機 composite action 的 steps）。
+
+每項變更都有一個效果：
+
+- reduced：CI 檢查變少，例如刪掉 matrix leg、branch 或 path 篩選變窄、job 加上 if: false、刪掉命令，或改成 continue-on-error: true。
+- unknown：運算式或 if 條件改了，無法求值。
+- review：執行內容改了但涵蓋沒有變少，例如換 runner 或修改命令。
+- added 與 neutral：涵蓋增加，或改名、命令移到其他 job、action 版本更新。
+
+| 結果 | 意義 | Exit |
+|---|---|---|
+| unchanged | 沒有影響 CI 執行內容的 workflow 修改 | 0 |
+| no-reduction | 有修改，但沒有一項減少涵蓋 | 0 |
+| reduced | 至少一項修改讓 CI 檢查變少；每項都附行號 | 1 |
+| blocked | 輸入無效或找不到 revision | 2 |
+| undetermined | 沒發現減少，但有修改無法求值 | 3 |
+
+減少可能是刻意的，例如只改文件時不跑 CI。報告把它列出來，讓 AI 先跟使用者確認，而不是事後才發現。想比較實際執行結果時，nextActions 會建議用 ci replay 在兩個 commit 上重播受影響的 job。
+
 ### 探索 CI
 
 ```sh
@@ -140,7 +166,7 @@ node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/
 
 step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow 行號、run 命令、輸出的最後幾行，以及 TAP「not ok」測試名稱。這些是觀察到的輸出，不是診斷出的原因。evidence.reader 是讀取保留 log 中該 step 區段的 read-evidence 參數。nextActions 會建議讀該區段、打開 workflow 那一行、在工作目錄執行該命令，並在提交修正後再重播。通過只涵蓋 coverage.replayed；coverage.notReplayed 與 coverage.notSelected 要在 Hosted CI 確認。
 
-報告使用 ci-local-guard/ci-inventory/v1、ci-local-guard/ci-check/v1、ci-local-guard/ci-replay/v1 與 ci-local-guard/ci-locate/v1。閱讀 outcome 時也要看 identity、scope、coverage、issues。workflow 修改比較與最佳化實驗仍在規劃，尚未實作。既有命令的 schemas 與 exit codes 不變。
+報告使用 ci-local-guard/ci-inventory/v1、ci-local-guard/ci-check/v1、ci-local-guard/ci-replay/v1、ci-local-guard/ci-locate/v1 與 ci-local-guard/ci-diff/v1。閱讀 outcome 時也要看 identity、scope、coverage、issues。執行最佳化實驗仍在規劃，尚未實作。既有命令的 schemas 與 exit codes 不變。
 
 ## 接入專案
 
