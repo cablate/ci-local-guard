@@ -51,7 +51,8 @@ export function agentReport(report, toolVersion) {
   const projectUnverified = receipt?.unverified || [];
   return { ...report, reportId: randomUUID(), createdAt: new Date().toISOString(), toolVersion,
     nextActions,
-    evidence: product?.logFile ? [{ id: 'execution-log', kind: 'log', path: product.logFile, availability: 'retained-at-report-time' }] : [],
+    evidence: product?.logFile ? [{ id: 'execution-log', kind: 'log', path: product.logFile, availability: 'retained-at-report-time',
+      reader: { command: 'read-evidence', args: ['--file', product.logFile], automatic: false } }] : [],
     coverage: { status: 'unverified',
       planStatus: report.planObligations?.status || 'not-requested',
       planMissingOwners: report.planObligations?.missing || [],

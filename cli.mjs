@@ -9,6 +9,7 @@ import { ACTIONLINT_VERSION, ensureActionlint } from './src/actionlint.mjs';
 import { observeCheckout, withExactCheckout } from './src/checkout.mjs';
 import { runLogged } from './src/run-log.mjs';
 import { checkSetup } from './src/readiness.mjs';
+import { readEvidence } from './src/evidence.mjs';
 import { agentReport, reserveReportOutput, summarizeReport } from './src/agent-report.mjs';
 import { auditRuns, collectRun, collectRuns, compareRuns, inspectRuns } from './src/ci-runs.mjs';
 import { assessLocalPushPolicy, assessPlanObligations, assessProtection, assessPushObligations, cleanGitEnvironment, formatPlan, git, MAX_PUSH_INPUT_BYTES, parsePushUpdates, planEventContext, preflightConfiguration, projectPreflight, simulator, ZERO_SHA } from './src/project.mjs';
@@ -366,6 +367,9 @@ Offline (Node 22.13..22.x only; no Git or credentials):
   audit-runs --input <github-export.json>
   compare-runs --input <comparison-envelope.json>
 
+  read-evidence --file <trusted-log-path> [--limit 4..16384] [--offset <byte> --version <previous-version>]
+    Offline bounded UTF-8 pages; always JSON, no adapter execution or report path following.
+
 Read-only GitHub collection (requires gh and Actions read access):
   collect-runs --repository owner/name --workflow ci.yml [--limit 1..25] [--attempts latest|history]
   collect-run --repository owner/name --run-id <id> --attempt <n> --workflow-id <id> --head <exact SHA>
@@ -387,6 +391,12 @@ AI guide: ${path.join(toolRoot, 'README.md')}
 AI/Agent: start at AI 操作入口; use JSON reports, not PASS text or exit zero alone.
 See README.md for schemas, side effects and unverified protection boundaries.
 `);
+    return;
+  }
+  if (verb === 'read-evidence') {
+    const report = readEvidence(rest);
+    process.stdout.write(JSON.stringify(report) + '\n');
+    process.exitCode = report.status === 'available' ? 0 : 1;
     return;
   }
   if (['collect-runs', 'collect-run'].includes(verb)) {

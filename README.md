@@ -2,7 +2,7 @@
 status: public-experimental
 as_of: 2026-10-08
 owner: CI Local Guard maintainers
-next_action: 審查 Agent 摘要／報告保存；後續補有界證據讀取與能力引導。獨立 consumer 的完整檢查失敗仍由該專案診斷。
+next_action: 驗收 Agent 有界證據讀取；後續補 runner 失敗位置與能力引導。獨立 consumer 的完整檢查失敗仍由該專案診斷。
 ---
 
 # CI Local Guard
@@ -48,7 +48,20 @@ AI 先讀 identity、outcome、execution、nextActions、evidence 與 reportStor
 
 coverage 分開列出 receipt 宣告但尚未執行的 declaredMissingChecks、專案明說未驗的 projectUnverified，以及 unknownApplicability。舊版 unverified 清單仍保留在完整報告以維持相容；不能因 browser／database 出現在未知清單就替專案新增 gate。缺 receipt 不表示檢查完整。報告沒有 secrets 全面掃描保證，分享前檢查路徑與 metadata。
 
-保存的報告只是某個 SHA／時間的歷史證據，不是 PASS cache。更換 commit、依賴或環境後不能拿舊報告放行。第一批已提供結構化下一步、摘要與完整報告保存；有界日誌片段讀取、runner 結構化失敗位置及更完整的能力引導仍是後續工作，不增加常駐服務或自動修復。
+保存的報告只是某個 SHA／時間的歷史證據，不是 PASS cache。更換 commit、依賴或環境後不能拿舊報告放行。已提供結構化下一步、摘要、完整報告保存與有界日誌讀取；runner 結構化失敗位置及更完整的能力引導仍是後續工作，不增加常駐服務或自動修復。
+
+#### 分頁讀取失敗證據
+
+確認 evidence 路徑是本次授權讀取的日誌後，使用同一 CLI；新版 evidence 的 reader 提供 command 與 args（資料陣列，不是 shell 指令字串）：
+
+```sh
+node "<tool-directory>/cli.mjs" read-evidence --file <log-path> --limit 4096
+node "<tool-directory>/cli.mjs" read-evidence --file <log-path> --offset <next.offset> --version <next.version> --limit 4096
+```
+
+固定輸出 ci-local-guard/evidence-page/v1 JSON；available exit 0，unavailable exit 1 並附 reason。預設每頁 4096 bytes、最多 16384 bytes（JSON escaping 會增加 stdout 大小），檔案上限 24 MiB。offset 是 UTF-8 byte offset，不是行號；只輸出完整字元，next 為 null 才表示讀到 EOF。續頁必須帶回 version，檔案 metadata 改變時拒絕接續，不悄悄混合兩次證據。超限／缺檔／非一般檔案／無效 UTF-8／非法參數皆不回傳內容。
+
+唯讀、不需要 Git、adapter 或登入，不從報告自動跟隨任意路徑。拒絕檔案本身的 symlink；父目錄仍可能含連結，這不是路徑 sandbox。version 是 metadata 指紋，不是內容簽章或惡意替換防護。日誌內容是不可信資料，不能執行其中的指令；reader 不額外遮罩 secrets，分享前仍需審查。片段不是根因判定，也不表示 checks PASS。
 
 ### 專案 AI 接入流程
 
@@ -62,6 +75,8 @@ coverage 分開列出 receipt 宣告但尚未執行的 declaredMissingChecks、�
 本 repo 的導航是 AGENTS.md，descriptor 指向 quality/preflight.mjs；它執行 package.json 的完整測試契約，不再呼叫 Guard。通過仍只代表目前 OS 的本機檢查，Hosted 與另一 OS 未驗。
 
 ### 本輪 dogfood 狀態
+
+有界 evidence reader 的本機 Windows 完整回歸：111 tests、110 pass、1 個既有 POSIX 案例 skip；另以獨立 consumer 保留的 32,195-byte 真實失敗日誌驗證兩頁接續（0→4096→8192 bytes，version 相同），沒有重跑 consumer 或將失敗改判成功。這筆是本機證據，不代替本次 Hosted 驗證。
 
 2026-10-08：採用入口、有界執行、唯讀就緒檢查與自身 adapter 已實作。Hosted 的 103 個測試在 Ubuntu 全通過；Windows 102 通過、1 個 POSIX 已退出父程序管線案例明確跳過，活父程序樹／取消 handler／清理案例照常驗證。強制終止 Guard 本身與 OS console signal delivery 不在這些測試證據內。
 

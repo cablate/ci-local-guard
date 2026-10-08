@@ -24,6 +24,7 @@ test('agent projection preserves failed identity and distinguishes unknown appli
   assert.deepEqual(short.coverage.unknownApplicability, ['browser', 'database']);
   assert.equal(short.coverage.declaredMissingChecks[0].id, 'approval');
   assert.equal(short.nextActions[0].evidenceId, short.evidence[0].id);
+  assert.deepEqual(short.evidence[0].reader, { command: 'read-evidence', args: ['--file', '/example/failed.log'], automatic: false });
   assert.ok(short.nextActions.every(action => action.automatic === false));
   assert.ok(JSON.stringify(short).length < JSON.stringify(full).length / 2);
   assert.equal(input.nextActions, undefined, 'do not mutate caller report');
