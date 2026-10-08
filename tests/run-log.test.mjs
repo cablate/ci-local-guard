@@ -6,6 +6,47 @@ import path from 'node:path';
 import test from 'node:test';
 import { cleanGitEnvironment } from '../src/project.mjs';
 import { createRedactor, runLogged, executionTimeout } from '../src/run-log.mjs';
+import { agentReport, summarizeReport } from '../src/agent-report.mjs';
+import { readEvidence } from '../src/evidence.mjs';
+
+test('validated failed checks locate final redacted UTF-8 log sections without guessing root causes', async () => {
+  const root = fixture();
+  try {
+    execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'core.hooksPath=.no-hooks', 'commit', '--allow-empty', '-qm', 'fixture'], { env: cleanGitEnvironment() });
+    const head = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8', env: cleanGitEnvironment() }).trim();
+    const identity = { base: head, head, event: 'push', mode: 'committed' };
+    for (const metadataSecret of [false, true]) {
+      const receipt = { schemaVersion: 'ci-local-guard/project-preflight/v1', identity, changedFiles: [],
+        checks: [{ id: 'unit', owner: 'tests', why: metadataSecret ? 'long-private-token' : 'fixture', status: 'ran', result: 'failure', durationMs: 1, log: 'unit.log', blockedBy: null }],
+        outcome: 'failed', unverified: ['hosted'] };
+      const code = `const fs=require('node:fs'); fs.mkdirSync('tmp/preflight',{recursive:true});
+        fs.writeFileSync('tmp/preflight/a.log','earlier section');
+        fs.writeFileSync('tmp/preflight/unit.log','失敗🙂 long-private-token\\n');
+        fs.writeFileSync('tmp/preflight/project-report.json',${JSON.stringify(JSON.stringify(receipt))});
+        console.log('prefix'); process.exit(1);`;
+      let failure;
+      try { await runLogged(process.execPath, ['-e', code], root, { collectDirectory: 'tmp/preflight', receiptIdentity: identity,
+        receiptSchema: receipt.schemaVersion, requireReceipt: true, env: { ...process.env, API_TOKEN: 'long-private-token' } }); }
+      catch (error) { failure = error; }
+      assert.equal(failure.projectReceipt.status, 'validated');
+      const locations = failure.collectedLogs.checkLocations;
+      if (metadataSecret) { assert.deepEqual(locations, []); continue; }
+      assert.equal(locations.length, 1);
+      const location = locations[0];
+      const log = readFileSync(failure.logFile);
+      const section = log.subarray(location.startByte, location.endByte).toString('utf8');
+      assert.match(section, /child log: unit.log/);
+      assert.match(section, /失敗🙂/);
+      assert.doesNotMatch(section, /long-private-token|earlier section|prefix/);
+      const short = summarizeReport(agentReport({ outcome: 'failed', product: { ...failure, status: 'failed' } }, 'test'));
+      assert.equal(short.execution.failedChecks[0].evidenceLocation.startByte, location.startByte);
+      const first = readEvidence(['--file', failure.logFile]);
+      const page = readEvidence(['--file', failure.logFile, '--offset', String(location.startByte), '--version', first.version]);
+      assert.equal(page.status, 'available');
+      assert.ok(page.text.startsWith(section));
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'guard-log-test-'));
@@ -277,6 +318,7 @@ test('structured failure keeps simultaneous child, receipt and post-validation i
       assert.equal(failure.executionFailure.processStarted, true);
       assert.deepEqual(failure.executionFailure.causes, [...(code ? ['child-exit-nonzero'] : []), 'receipt-invalid', 'post-execution-validation-failed']);
       assert.equal(failure.executionFailure.receiptStatus, 'invalid');
+      assert.equal(failure.collectedLogs.checkLocations, undefined, 'invalid receipts must not create check locations');
       assert.deepEqual(failure.executionFailure.failedChecks, []);
       assert.doesNotMatch(JSON.stringify(failure.executionFailure), /private-|misleading-message/);
     }

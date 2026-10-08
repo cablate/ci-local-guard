@@ -61,6 +61,7 @@ export async function runLogged(command, args, repo, {
   let loggingFailed = false;
   let collectedLogs = { status: 'not-requested', count: 0 };
   let collectionFinished = false;
+  const logRanges = new Map();
   let projectReceipt = { status: 'unavailable' };
   let exitCode = null;
   let exitSignal = null;
@@ -80,8 +81,14 @@ export async function runLogged(command, args, repo, {
         writeSync(fd, '\n[ci-local-guard] Log size limit exceeded; check stopped, not PASS.\n');
         throw new Error('log size limit exceeded');
       }
-      writeSync(fd, text);
-      bytes += size;
+      const buffer = Buffer.from(text);
+      let offset = 0;
+      while (offset < buffer.length) {
+        const written = writeSync(fd, buffer, offset, buffer.length - offset);
+        if (!written) throw new Error('Log write made no progress');
+        offset += written;
+        bytes += written;
+      }
     } catch (error) {
       causes.add(cause);
       failure = error;
@@ -198,6 +205,7 @@ export async function runLogged(command, args, repo, {
           if (!info.isFile() || info.isSymbolicLink()) throw new Error('Unsafe child log file');
           const input = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
           try {
+            const startByte = bytes;
             const redact = createRedactor(env, write);
             const decoder = new StringDecoder('utf8');
             redact(`\n[ci-local-guard] child log: ${name}\n`);
@@ -208,6 +216,7 @@ export async function runLogged(command, args, repo, {
             }
             redact(decoder.end(), true);
             if (loggingFailed) throw failure;
+            logRanges.set(name, { startByte, endByte: bytes });
             collectedLogs.count += 1;
           } finally { closeSync(input); }
         }
@@ -237,6 +246,13 @@ export async function runLogged(command, args, repo, {
         receipt.checks = receipt.checks.map((check) => ({ ...check,
           ...Object.fromEntries(['id', 'owner', 'why', 'blockedBy', 'log'].map((key) => [key, mask(check[key])])) }));
         projectReceipt.redactedMetadata = redactedMetadata;
+        // Only validated, unambiguous receipt IDs locate fully collected sections.
+        // These byte ranges cover redacted output including its section header,
+        // not a guessed error line or root cause.
+        collectedLogs.checkLocations = redactedMetadata ? [] : receipt.checks.flatMap(check => {
+          const range = logRanges.get(check.log);
+          return range ? [{ checkId: check.id, ...range }] : [];
+        });
       }
     }
     if (failure) throw failure;

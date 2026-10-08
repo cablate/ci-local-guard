@@ -5,6 +5,8 @@
 Source repository is public under MIT; no versioned Release or registry publication yet. The version is owned by package.json.
 
 ### Added
+- Doctor capability-specific blockers, required inputs and unverified prerequisites in full and compact reports; offline work stays independent of project setup.
+- Failed-check evidence locations from runner-recorded redacted UTF-8 byte ranges and validated receipt IDs, not log-text heuristics.
 - Offline `read-evidence` JSON pages with bounded UTF-8 reads, explicit continuation versions and machine-readable failure reasons; retained evidence includes non-automatic reader arguments.
 - Agent summaries and exclusive full-report `--output` for preflight / doctor --check, including stable action kinds, evidence IDs and explicit unknown applicability; saved reports never replace fresh checks.
 - Read-only `doctor --check --json` separates committed setup from unverified dependencies and Hosted checks.

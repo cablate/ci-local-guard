@@ -6,6 +6,24 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import { agentReport, reserveReportOutput, summarizeReport } from '../src/agent-report.mjs';
+import { setupCapabilities } from '../src/readiness.mjs';
+
+test('capabilities keep offline work independent of repository setup and do not imply readiness', () => {
+  const input = { node: { supported: true }, git: { available: false }, externalTools: { gh: { available: false } }, outcome: 'blocked' };
+  const byId = value => Object.fromEntries(setupCapabilities(value).map(item => [item.id, item]));
+  const missing = byId(input);
+  assert.equal(missing.analyze.status, 'prerequisites-detected');
+  assert.equal(missing['read-evidence'].status, 'prerequisites-detected');
+  assert.ok(missing.preflight.blockers.includes('git'));
+  assert.deepEqual(missing.collect.blockers, ['gh']);
+  const configured = byId({ ...input, git: { available: true }, repo: '/fixture', head: 'a'.repeat(40), outcome: 'configured', externalTools: { gh: { available: true } } });
+  assert.equal(configured.preflight.status, 'prerequisites-detected');
+  assert.ok(configured.preflight.unverified.includes('project-dependencies'));
+  assert.deepEqual(configured.plan.blockers, ['committed-plan-adapter']);
+  assert.ok(configured.collect.unverified.includes('authentication'));
+  assert.ok(Object.values(configured).every(item => item.automatic === false));
+  assert.ok(setupCapabilities({ ...input, node: { supported: false } }).every(item => item.blockers.includes('supported-node')));
+});
 
 test('agent projection preserves failed identity and distinguishes unknown applicability from declared missing checks', () => {
   const input = { schemaVersion: 'ci-local-guard/preflight-report/v1', identity: { head: 'a'.repeat(40) }, outcome: 'failed',
@@ -64,6 +82,7 @@ test('doctor summary saves unconfigured and configured reports without running p
     const missing = invoke('missing.json');
     assert.equal(missing.status, 2, missing.stderr);
     assert.equal(JSON.parse(missing.stdout).nextActions[0].kind, 'configure-project');
+    assert.equal(JSON.parse(missing.stdout).capabilities.find(item => item.id === 'analyze').status, 'prerequisites-detected');
     writeFileSync(path.join(root, 'preflight.mjs'), 'throw new Error("must not execute")');
     writeFileSync(path.join(root, '.ci-local-guard.json'), JSON.stringify({ schemaVersion: 'ci-local-guard/project/v1', preflight: { entrypoint: 'preflight.mjs', dependencies: 'none', receipt: 'guard-v1' } }));
     git(['add', '.']); commit();
@@ -73,5 +92,7 @@ test('doctor summary saves unconfigured and configured reports without running p
     const saved = JSON.parse(readFileSync(path.join(root, '.git/configured.json'), 'utf8'));
     assert.equal(saved.descriptor.status, 'valid');
     assert.equal(saved.dependencies.status, 'unknown');
+    assert.deepEqual(JSON.parse(ready.stdout).capabilities, saved.capabilities);
+    assert.equal(saved.capabilities.find(item => item.id === 'plan').status, 'blocked');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
