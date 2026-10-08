@@ -5,6 +5,7 @@
 Source repository is public under MIT; no versioned Release or registry publication yet. The version is owned by package.json.
 
 ### Added
+- Agent summaries and exclusive full-report `--output` for preflight / doctor --check, including stable action kinds, evidence IDs and explicit unknown applicability; saved reports never replace fresh checks.
 - Read-only `doctor --check --json` separates committed setup from unverified dependencies and Hosted checks.
 - Project-owned self-preflight and short repository agent entrypoint.
 - Bounded execution (default 900 seconds), cancellation, owned process-tree termination and retained-checkout diagnostics.

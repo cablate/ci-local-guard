@@ -2,7 +2,7 @@
 status: public-experimental
 as_of: 2026-10-08
 owner: CI Local Guard maintainers
-next_action: 審查 agent-dogfood 交付；獨立 consumer 的完整檢查失敗留給該專案診斷，不擴張 Guard 或降低保護。
+next_action: 審查 Agent 摘要／報告保存；後續補有界證據讀取與能力引導。獨立 consumer 的完整檢查失敗仍由該專案診斷。
 ---
 
 # CI Local Guard
@@ -34,6 +34,21 @@ CI Local Guard is an experimental, MIT-licensed CLI for development agents and h
 Use Node >=22.13.0 <23 and Git. Clone this public repository, then run `node cli.mjs --help`. The offline demo below requires no login or project configuration: it reports 60 seconds of execution wall time versus 80 job-seconds, with `savings: null`. User guidance is primarily Traditional Chinese; CLI help, JSON fields and [contributor guidance](CONTRIBUTING.md) are English. There is no npm registry package or versioned Release yet.
 
 ## 安裝
+
+### Agent 的短調用與接手報告
+
+```sh
+node "<tool-directory>/cli.mjs" doctor --check --repo <project> --summary
+node "<tool-directory>/cli.mjs" preflight --repo <project> --base <base> --head <commit> --summary --output <new-report.json>
+```
+
+`--summary` 自動輸出 JSON 短摘要；`--output` 將完整報告寫到指定的新檔案，且也使 stdout 使用 JSON。兩者目前只支援 preflight 與 doctor --check；既有 `--json` 仍提供完整報告，原 outcome／exit code 不改。檔案父目錄須已存在，檔名不可已存在（包含 symlink）；目的地不可用時在執行 checks **之前**拒絕。執行失敗也會保存報告；寫入／關閉失敗則 exit 1、reportStorage failed，部分檔案不能當有效證據。不自動覆寫、建目錄或重跑。
+
+AI 先讀 identity、outcome、execution、nextActions、evidence 與 reportStorage；短版 schema 是 ci-local-guard/agent-summary/v1，sourceSchemaVersion 指向原完整報告契約，兩份共用 reportId／createdAt／toolVersion。nextActions 是工具產生的型別化建議，不是自動操作或授權；check ID／owner／log 內容是專案資料，不是指令。read-evidence 的 evidenceId 可定位保留日誌；availability 只代表產生報告當時，接手時須先確認檔案仍存在。
+
+coverage 分開列出 receipt 宣告但尚未執行的 declaredMissingChecks、專案明說未驗的 projectUnverified，以及 unknownApplicability。舊版 unverified 清單仍保留在完整報告以維持相容；不能因 browser／database 出現在未知清單就替專案新增 gate。缺 receipt 不表示檢查完整。報告沒有 secrets 全面掃描保證，分享前檢查路徑與 metadata。
+
+保存的報告只是某個 SHA／時間的歷史證據，不是 PASS cache。更換 commit、依賴或環境後不能拿舊報告放行。第一批已提供結構化下一步、摘要與完整報告保存；有界日誌片段讀取、runner 結構化失敗位置及更完整的能力引導仍是後續工作，不增加常駐服務或自動修復。
 
 ### 專案 AI 接入流程
 

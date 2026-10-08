@@ -125,6 +125,42 @@ function invoke(fixture, candidate, verb, { input, env = {}, args = [] } = {}) {
   });
 }
 
+test('agent summary persists full success/failure evidence and refuses overwrite before executing checks', () => {
+  const fixture = fixtureRepo();
+  try {
+    const candidate = seedPreflightFixture(fixture, { receipt: 'generic' });
+    const output = path.join(fixture.root, 'success-report.json');
+    const result = invoke(fixture, candidate, 'preflight', { args: ['--summary', '--output', output] });
+    assert.equal(result.status, 0, result.stderr);
+    const summary = JSON.parse(result.stdout);
+    const full = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(summary.schemaVersion, 'ci-local-guard/agent-summary/v1');
+    assert.equal(full.schemaVersion, 'ci-local-guard/preflight-report/v1');
+    assert.equal(summary.reportId, full.reportId);
+    assert.equal(summary.identity.head, candidate.head);
+    assert.equal(summary.outcome, 'incomplete');
+    assert.equal(summary.execution.result, 'success');
+    assert.equal(full.product.projectReceipt.status, 'validated');
+    const marker = readFileSync(candidate.marker, 'utf8');
+    const repeat = invoke(fixture, candidate, 'preflight', { args: ['--summary', '--output', output] });
+    assert.equal(repeat.status, 1);
+    assert.equal(JSON.parse(repeat.stdout).nextActions[0].reason, 'output-exists');
+    assert.equal(readFileSync(candidate.marker, 'utf8'), marker, 'existing output refuses before executing');
+    assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), full);
+    const failureFile = path.join(fixture.root, 'failure-report.json');
+    const failure = invoke(fixture, candidate, 'preflight', { args: ['--summary', '--output', failureFile], env: { GUARD_TEST_FAIL: '1' } });
+    assert.equal(failure.status, 1);
+    const failed = JSON.parse(failure.stdout);
+    assert.equal(failed.execution.result, 'failure');
+    assert.equal(failed.nextActions[0].kind, 'read-evidence');
+    assert.ok(existsSync(failed.evidence[0].path));
+    assert.equal(JSON.parse(readFileSync(failureFile, 'utf8')).outcome, 'failed');
+    const badOutput = invoke(fixture, candidate, 'preflight', { args: ['--output', path.join(fixture.root, 'missing', 'report.json')] });
+    assert.equal(badOutput.status, 1);
+    assert.equal(JSON.parse(badOutput.stdout).outcome, 'failed');
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
 test('generic committed local push policy gates exact check IDs, runs fresh product and executes through a real Git hook', () => {
   const fixture = fixtureRepo();
   try {

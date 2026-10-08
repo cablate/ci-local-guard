@@ -9,13 +9,23 @@ import { ACTIONLINT_VERSION, ensureActionlint } from './src/actionlint.mjs';
 import { observeCheckout, withExactCheckout } from './src/checkout.mjs';
 import { runLogged } from './src/run-log.mjs';
 import { checkSetup } from './src/readiness.mjs';
+import { agentReport, reserveReportOutput, summarizeReport } from './src/agent-report.mjs';
 import { auditRuns, collectRun, collectRuns, compareRuns, inspectRuns } from './src/ci-runs.mjs';
 import { assessLocalPushPolicy, assessPlanObligations, assessProtection, assessPushObligations, cleanGitEnvironment, formatPlan, git, MAX_PUSH_INPUT_BYTES, parsePushUpdates, planEventContext, preflightConfiguration, projectPreflight, simulator, ZERO_SHA } from './src/project.mjs';
 
 const toolRoot = path.dirname(fileURLToPath(import.meta.url));
 const HOOKS_PATH = path.join(toolRoot, 'hooks').replaceAll('\\', '/');
-const jsonRequested = ['preflight', 'plan', 'pre-push', 'doctor'].includes(process.argv[2]) && process.argv.slice(3).includes('--json');
+const jsonRequested = ['preflight', 'plan', 'pre-push', 'doctor'].includes(process.argv[2]) && process.argv.slice(3).some(arg => ['--json', '--summary', '--output'].includes(arg));
 const diagnostic = (text) => (jsonRequested ? process.stderr : process.stdout).write(text);
+let reportOptions = {};
+let writeReport;
+const toolVersion = JSON.parse(readFileSync(path.join(toolRoot, 'package.json'), 'utf8')).version;
+function emitAgentReport(raw) {
+  const report = agentReport(raw, toolVersion);
+  if (writeReport) { const save = writeReport; writeReport = null; save(report); }
+  if (report.reportStorage.status === 'failed') process.exitCode = 1;
+  process.stdout.write(JSON.stringify(reportOptions.summary ? summarizeReport(report) : report) + '\n');
+}
 let preflightReport;
 let planReport;
 let pushReport;
@@ -48,8 +58,8 @@ function options(args) {
   const result = {};
   for (let index = 0; index < args.length; index += 1) {
     const key = args[index];
-    if (!['--repo', '--base', '--head', '--event', '--worktree', '--json', '--ref', '--base-ref', '--head-ref', '--with-plan', '--pr-action', '--pr-fork', '--check'].includes(key)) throw new Error(`Unknown option: ${key}`);
-    if (['--worktree', '--json', '--with-plan', '--check'].includes(key)) {
+    if (!['--repo', '--base', '--head', '--event', '--worktree', '--json', '--ref', '--base-ref', '--head-ref', '--with-plan', '--pr-action', '--pr-fork', '--check', '--summary', '--output'].includes(key)) throw new Error(`Unknown option: ${key}`);
+    if (['--worktree', '--json', '--with-plan', '--check', '--summary'].includes(key)) {
       result[key.slice(2)] = true;
     } else {
       if (!args[index + 1] || args[index + 1].startsWith('--')) throw new Error(`Missing value for ${key}`);
@@ -225,7 +235,7 @@ async function preflightHead(repo, baseRef, headRef = 'HEAD', event = 'pull_requ
     if (preflightReport.planObligations.status === 'needs-review') preflightReport.outcome = 'needs-review';
   }
   diagnostic('[ci-local-guard] Standalone preflight does not verify simulator review or the CI-policy gate.\n');
-  if (jsonRequested) process.stdout.write(`${JSON.stringify(preflightReport)}\n`);
+  if (jsonRequested) emitAgentReport(preflightReport);
 }
 
 function preCommit(repo) {
@@ -367,6 +377,7 @@ Local repository commands (require Git; trust project code before execution):
     Generic committed plan: [--ref refs/heads/name] or PR [--base-ref name] [--head-ref name] [--pr-action opened] [--pr-fork true|false]
   plan|doctor|pre-commit|pre-push|install-hook|uninstall-hook --repo <project>
   doctor --check --json --repo <project> (read-only setup; no downloads or adapter execution)
+  preflight / doctor --check: --summary (compact JSON), --output <new-file> (full historical report; no overwrite)
   CI_LOCAL_GUARD_TIMEOUT_SECONDS: positive integer; default 900. Plan remains limited to 30 seconds.
   pre-push --repo <project> [--json] < Git-pre-push-update-records
 
@@ -412,12 +423,15 @@ See README.md for schemas, side effects and unverified protection boundaries.
     throw new Error('Usage: node cli.mjs <doctor|plan|preflight|install-hook|uninstall-hook|pre-push|pre-commit> --repo <project> [--base <ref>]');
   }
   const opts = options(rest);
+  if ((opts.summary || opts.output) && !(verb === 'preflight' || (verb === 'doctor' && opts.check))) throw new Error('--summary/--output support preflight and doctor --check only');
+  reportOptions = opts;
   if (opts.check && verb !== 'doctor') throw new Error('--check supports doctor only');
   if (verb === 'doctor' && opts.check) {
-    if (Object.keys(opts).some(key => !['repo', 'check', 'json'].includes(key))) throw new Error('Unsupported doctor --check option');
+    if (Object.keys(opts).some(key => !['repo', 'check', 'json', 'summary', 'output'].includes(key))) throw new Error('Unsupported doctor --check option');
+    if (opts.output) writeReport = reserveReportOutput(opts.output);
     const report = checkSetup(opts.repo || process.cwd());
-    process.stdout.write(JSON.stringify(report, null, opts.json ? undefined : 2) + '\n');
     process.exitCode = report.outcome === 'configured' ? 0 : report.outcome === 'unconfigured' ? 2 : 1;
+    emitAgentReport(report);
     return;
   }
   if (opts['with-plan'] && verb !== 'preflight') throw new Error('--with-plan supports preflight only');
@@ -427,6 +441,7 @@ See README.md for schemas, side effects and unverified protection boundaries.
   if (verb === 'preflight' && (opts.worktree)) {
     throw new Error('preflight accepts committed --head only; --worktree and --branch are not supported');
   }
+  if (opts.output) writeReport = reserveReportOutput(opts.output);
   const repo = ['pre-push', 'pre-commit', 'preflight', 'plan', 'install-hook', 'uninstall-hook'].includes(verb)
     ? await timedPhase('repository', () => git(path.resolve(opts.repo || process.cwd()), ['rev-parse', '--show-toplevel']))
     : git(path.resolve(opts.repo || process.cwd()), ['rev-parse', '--show-toplevel']);
@@ -467,7 +482,7 @@ main().catch((error) => {
   console.error(`[ci-local-guard] ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
   if (jsonRequested && process.argv[2] === 'doctor') {
-    process.stdout.write(JSON.stringify({ schemaVersion: 'ci-local-guard/setup-report/v1', outcome: 'blocked', nextAction: 'Use doctor --check --json --repo <project>.' }) + '\n');
+    emitAgentReport({ schemaVersion: 'ci-local-guard/setup-report/v1', outcome: 'blocked', reportOutputFailure: error.reportOutputFailure || null, nextAction: 'Use doctor --check --json --repo <project>.' });
   } else if (jsonRequested && process.argv[2] === 'pre-push') {
     const failure = { code: error.pushCode || 'execution-failed', logFile: error.logFile || null };
     pushReport.outcome = 'blocked';
@@ -503,6 +518,7 @@ main().catch((error) => {
       checkoutObservation: error.checkoutObservation || null, protection: error.protection || assessProtection(),
       executionFailure: error.executionFailure || null, retainedCheckout: error.retainedCheckout || null, cleanupFailure: error.cleanupFailure || null };
     report.nextAction = failureNextAction(error);
-    process.stdout.write(`${JSON.stringify(report)}\n`);
+    report.reportOutputFailure = error.reportOutputFailure || null;
+    emitAgentReport(report);
   }
 });

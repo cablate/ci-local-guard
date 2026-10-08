@@ -8,6 +8,10 @@ adapter is `quality/preflight.mjs`. `package.json` owns the full test command.
 - Before exact-commit evidence, run `node cli.mjs doctor --check --json --repo .`,
   then `node cli.mjs preflight --repo . --base <explicit-base> --head <commit> --json`.
   Commit only when authorized; dirty edits are not included in exact evidence.
+- For agent calls, add `--summary --output <new-report.json>` to preflight or
+  doctor --check. Stdout is a compact JSON view; the new file keeps the full report.
+  Read `nextActions` and evidence IDs before opening logs. Unknown applicability
+  is not a newly required check. Saved reports never authorize skipping fresh checks.
 - For CI performance, use collect-runs → inspect-runs/audit-runs → compare-runs;
   preserve Windows/Linux and all existing assertions. Timings are not billing.
 - Read JSON identity, outcome, failed checks and unverified responsibilities.
