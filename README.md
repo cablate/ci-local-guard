@@ -146,18 +146,18 @@ Windows/Ubuntu tested; macOS/arm64, Claude Desktop and WSL unverified. Terminati
 
 ## TODO+ / delivery status
 
-As of 2026-10-08: public experimental v0.1.0 exists; this branch prepares the next patch. This translated pair is the single delivery ledger. Next: finish contract navigation/checks, isolated adoption and final release verification.
+As of 2026-10-08: [v0.1.1](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.1) is public and experimental. This translated pair is the single delivery ledger. This promotion pass is complete; future work should follow real adoption failures, not add another integration layer.
 
 | Package | Evidence / status | Next gate |
 |---|---|---|
-| 1 Public risk | 39 files reviewed; one Low plan-output issue patched. History scan: 20 commits/104 blobs, 15 synthetic candidate groups; public author email accepted | Final artifacts; no zero-secret guarantee/history rewrite |
-| 2 AI / bilingual | Paired README/reference preserve contracts; installed help resolves the AI entry point and reference | Final release archive navigation |
-| 3 Docs / version | Shared changelog generator and structural/code drift check integrated into full tests/CI | Final version/tag synchronization |
+| 1 Public risk | Baseline 39 files reviewed; one Low plan-output issue patched and tested. History: 20 commits/104 blobs, 15 synthetic candidate groups; subsequent delivery diff/package reviewed | No zero-secret guarantee; accepted public author email; no history rewrite |
+| 2 AI / bilingual | English/Traditional Chinese README/reference included and discoverable in the downloaded release and plugin | Adoption remains consumer-owned |
+| 3 Docs / version | Shared generator, all three bilingual pairs and CI drift checks pass; published notes match generated notes | Future changes must update both languages |
 | 4 Adoption | Isolated installed consumer verifies configured/missing/failure/dirty/exact; executable offline demo reports 60/80/null | Authored fixtures, not autonomous or universal AI proof |
-| 5 Regression | Windows full suite: 120 pass/1 existing POSIX skip out of 121; plan fix independently reviewed | Versioned full tests and Hosted Windows/Linux |
-| 6 Delivery | v0.1.0 retained; new patch not published | Review/main, experimental patch, archive/cross-version plugin update |
+| 5 Regression | [Hosted tests](https://github.com/cablate/ci-local-guard/actions/runs/37725011025): Windows 120 pass/1 POSIX skip; Ubuntu 121 pass. Own exact-commit preflight succeeds with validated receipt/incomplete | macOS/arm64, Desktop/WSL and autonomous AI behavior unverified |
+| 6 Delivery | [Release workflow](https://github.com/cablate/ci-local-guard/actions/runs/37725260631) succeeded; downloaded archive checksum/offline npm exec verified; isolated Claude 0.1.0 → 0.1.1 update and uninstall passed | v0.1.0 unchanged; no npm registry or automatic hooks |
 
-Historical dogfood: six alternating fixture runs missed the predefined 10% median wall improvement threshold (7.6% observed, equal means), so the candidate was reverted; no proven savings. Another real consumer used generic receipts but its checks failed; Guard did not weaken them. No consumer-specific logic ships. Previous plugin evidence covers isolated install/same-version update/uninstall, not cross-version upgrades or every AI's behavior.
+Historical dogfood: six alternating fixture runs missed the predefined 10% median wall improvement threshold (7.6% observed, equal means), so the candidate was reverted; no proven savings. Another real consumer used generic receipts but its checks failed; Guard did not weaken them. No consumer-specific logic ships. The [previous release record](https://github.com/cablate/ci-local-guard/blob/v0.1.0/README.md) retains the six-run experiment and failed sample. Current release metadata was collected/inspected with Guard: wall 147 seconds, job-sum 184 seconds, savings null; these are diagnostics, not optimization proof. Isolated plugin lifecycle tests do not prove every AI's behavior.
 
 ## Development, feedback and license
 

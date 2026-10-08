@@ -146,18 +146,18 @@ claude plugin uninstall ci-local-guard@ci-local-guard-marketplace
 
 ## TODO+／交付狀態
 
-截至 2026-10-08：已有 public experimental v0.1.0；本分支準備下一個 patch。這組雙語文件是唯一交付進度 owner。下一步：完成契約導航／檢查、隔離採用與最終發布驗證。
+截至 2026-10-08：[v0.1.1](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.1) 已公開，仍為 experimental。這組雙語文件是唯一交付進度 owner。本輪推廣準備完成；後續依真實接入失敗改善，不再增加整合層。
 
 | 工作包 | 證據／狀態 | 下一關 |
 |---|---|---|
-| 1 公開風險 | 已審 39 檔；修補 1 個 Low plan 輸出問題。歷史掃描：20 commits/104 blobs、15 組合成候選；作者接受 Email 公開 | 最終資產；不保證零秘密／不改寫歷史 |
-| 2 AI／雙語 | README/reference 配對保留契約；安裝版 help 可找到 AI 入口與 reference | 最終 Release 壓縮檔導航 |
-| 3 文件／版本 | 共用 changelog generator、結構／程式碼漂移檢查已接入全套測試／CI | 最終版號／tag 同步 |
+| 1 公開風險 | 基準已審 39 檔；1 個 Low plan 輸出問題已修補測試。歷史：20 commits/104 blobs、15 組合成候選；後續交付 diff／package 已審 | 不保證零秘密；作者已接受 Email 公開；不改寫歷史 |
+| 2 AI／雙語 | 下載版 Release 與 plugin 包含可找到的英文／繁中 README/reference | 接入責任仍屬 consumer |
+| 3 文件／版本 | 共用 generator、3 組雙語文件、CI 漂移檢查皆通過；已發布 notes 與 generator 一致 | 後續變更須同步雙語 |
 | 4 採用 | 隔離安裝 consumer 驗證配置／缺配置／失敗／dirty／exact；可執行離線範例回報 60/80/null | 人工編寫 fixture，不冒充自主或所有 AI 成功 |
-| 5 回歸 | Windows 全套 121 tests：120 pass/1 既有 POSIX skip；plan 修補經獨立 review | 升版後全套與 Hosted Windows/Linux |
-| 6 交付 | 保留 v0.1.0；未發新 patch | Review/main、experimental patch、archive／跨版 plugin 更新 |
+| 5 回歸 | [Hosted tests](https://github.com/cablate/ci-local-guard/actions/runs/37725011025)：Windows 120 pass/1 POSIX skip；Ubuntu 121 pass。自身 exact-commit 預檢成功，receipt validated／incomplete | macOS/arm64、Desktop/WSL、自主 AI 行為未驗 |
+| 6 交付 | [Release workflow](https://github.com/cablate/ci-local-guard/actions/runs/37725260631) 成功；下載版 checksum／離線 npm exec 已驗；隔離 Claude 0.1.0 → 0.1.1 更新與移除成功 | v0.1.0 不變；無 npm registry 或自動 hooks |
 
-歷史 dogfood：六次交錯 fixture runs 未達预定中位等待改善 10% 門檻（觀察 7.6%、平均相同），因此撤回候選，不宣稱節省。另一真實 consumer 使用通用 receipt，但檢查失敗；Guard 未降低檢查，也不包含 consumer 特例。舊 plugin 證據涵蓋隔離安裝／同版更新／移除，不證明跨版升級或每個 AI 的行為。
+歷史 dogfood：六次交錯 fixture runs 未達预定中位等待改善 10% 門檻（觀察 7.6%、平均相同），因此撤回候選，不宣稱節省。另一真實 consumer 使用通用 receipt，但檢查失敗；Guard 未降低檢查，也不包含 consumer 特例。[前版紀錄](https://github.com/cablate/ci-local-guard/blob/v0.1.0/README.md) 保留六次實驗與失敗樣本。本版 Release metadata 已用 Guard 收集／分析：wall 147 秒、job-sum 184 秒、savings null；這是診斷，不是最佳化證明。隔離 plugin 生命週期測試不證明每個 AI 的行為。
 
 ## 開發、回饋與授權
 
