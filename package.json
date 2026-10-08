@@ -2,11 +2,7 @@
   "name": "ci-local-guard",
   "version": "0.1.0",
   "description": "AI-first exact-commit CI preflight and evidence-based CI diagnostics",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/",
-    "tag": "next"
-  },
+  "private": true,
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -18,7 +14,8 @@
     "hooks/",
     "README.md",
     "CONTRIBUTING.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "CHANGELOG.zh-TW.md"
   ],
   "engines": {
     "node": ">=22.13.0 <23"

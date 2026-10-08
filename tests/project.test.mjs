@@ -221,8 +221,8 @@ test('candidate README preserves adoption boundaries without internal evidence i
   assert.doesNotMatch(readme, /[A-Z]:[\\/](?:Users|_CabLate_Agents)[\\/]|\b[0-9a-f]{40}\b|\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/i);
   assert.doesNotMatch(readme, /\b(?:run|job|artifact)\s*\**\s*[0-9]{10,}\b/i);
   assert.match(readme, /generic.*不支援 pre-push/);
-  assert.match(readme, /npm 發布預設 next channel/);
-  assert.match(readme, /npm registry \*\*尚未發布\*\*/);
+  assert.match(readme, /private: true/);
+  assert.match(readme, /GitHub Release/);
   assert.match(readme, /CLI.*不是惡意程式 sandbox|工具不是惡意程式 sandbox/);
   const intro = readme.slice(0, readme.indexOf('<details>'));
   assert.match(intro, /先選你的情境/);
@@ -243,7 +243,7 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
   mkdirSync(stage); mkdirSync(consumer);
   try {
     const copyFile = (name) => writeFileSync(path.join(stage, name), readFileSync(path.join(source, name)));
-    for (const name of ['cli.mjs', 'README.md', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md']) copyFile(name);
+    for (const name of ['cli.mjs', 'README.md', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md']) copyFile(name);
     for (const directory of ['src', 'hooks']) {
       mkdirSync(path.join(stage, directory));
       for (const file of readdirSync(path.join(source, directory))) copyFile(`${directory}/${file}`);
@@ -252,8 +252,8 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     mkdirSync(path.join(stage, 'evidence')); writeFileSync(path.join(stage, 'evidence/raw.json'), '{}');
     mkdirSync(path.join(stage, 'tests')); writeFileSync(path.join(stage, 'tests/fixture.json'), '{}');
     const manifest = JSON.parse(readFileSync(path.join(stage, 'package.json'), 'utf8'));
-    assert.notEqual(manifest.private, true);
-    assert.deepEqual(manifest.publishConfig, { access: 'public', registry: 'https://registry.npmjs.org/', tag: 'next' });
+    assert.equal(manifest.private, true);
+    assert.equal(manifest.publishConfig, undefined);
     assert.equal(manifest.license, 'MIT');
     assert.deepEqual(Object.keys(manifest.dependencies || {}), []);
     assert.ok(['preinstall', 'install', 'postinstall', 'prepare'].every(name => !manifest.scripts?.[name]));
@@ -275,7 +275,7 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     assert.match(runNpx(['--help']), /public-experimental/);
     const page = path.join(isolated, 'check.log'); writeFileSync(page, 'npx evidence');
     assert.equal(JSON.parse(runNpx(['read-evidence', '--file', page])).text, 'npx evidence');
-    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'cli.mjs', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
+    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'cli.mjs', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
     assert.ok(packed.files.some(({ path: file }) => file === 'src/ci-runs.mjs'));
     for (const file of ['LICENSE', 'README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
       assert.ok(packed.files.some((entry) => entry.path === file), `package needs ${file}`);

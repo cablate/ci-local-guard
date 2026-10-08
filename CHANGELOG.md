@@ -1,11 +1,12 @@
 # Changelog
+[繁體中文](CHANGELOG.zh-TW.md)
 
-## Unreleased — experimental
+## 0.1.0 — experimental
 
-Source repository is public under MIT; no versioned Release or registry publication yet. The version is owned by package.json.
+Install from GitHub without an npm account. This first experimental release gives agents exact-commit checks, bounded failure evidence and a thin Claude entrypoint. package.json owns the version. Local success is not a complete Hosted CI verdict.
 
 ### Added
-- Publishable npm metadata, fixed-version offline npm-exec installation coverage and a tag-gated OIDC release workflow; registry bootstrap remains a maintainer prerequisite.
+- GitHub Release archives and checksums, fixed-version offline npm-exec installation coverage and tag-gated release checks. npm registry publication is disabled.
 - Thin Claude skill plugin bundling the same CLI core, with marketplace metadata and checked version synchronization. No auto hooks, MCP or separate runner.
 - `--version` for installed CLI identity checks.
 - Doctor capability-specific blockers, required inputs and unverified prerequisites in full and compact reports; offline work stays independent of project setup.

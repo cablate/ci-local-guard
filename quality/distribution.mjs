@@ -13,18 +13,17 @@ if (process.argv.includes('--write')) {
   writeFileSync(path.join(root, '.claude-plugin/plugin.json'), JSON.stringify(plugin, null, 2) + '\n');
 }
 assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
-assert.notEqual(pkg.private, true);
+assert.equal(pkg.private, true, 'Registry publication is disabled; distribute through GitHub');
 assert.equal(plugin.name, pkg.name);
 assert.equal(plugin.version, pkg.version, 'Run npm run distribution:sync after changing package.json version');
-assert.equal(pkg.publishConfig.registry, 'https://registry.npmjs.org/');
-assert.equal(pkg.publishConfig.access, 'public');
-assert.equal(pkg.publishConfig.tag, 'next', 'Experimental releases must not silently promote latest');
+assert.equal(pkg.publishConfig, undefined);
 assert.ok(!['preinstall', 'install', 'postinstall', 'prepare'].some(key => pkg.scripts?.[key]));
 assert.deepEqual(read('.claude-plugin/marketplace.json').plugins.map(({ name, source, version }) => ({ name, source, version })),
   [{ name: pkg.name, source: './', version: undefined }]);
 if (process.env.RELEASE_TAG) {
   assert.equal(process.env.RELEASE_TAG, `v${pkg.version}`, 'Tag must match package.json');
-  assert.ok(readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8').split(/\r?\n/).some(line => line.startsWith(`## ${pkg.version} — `)), 'Move Unreleased notes to a versioned CHANGELOG heading before tagging');
+  for (const file of ['CHANGELOG.md', 'CHANGELOG.zh-TW.md']) {
+    assert.ok(readFileSync(path.join(root, file), 'utf8').split(/\r?\n/).some(line => line.startsWith(`## ${pkg.version} — `)), `Missing versioned release notes in ${file}`);
+  }
 }
-console.log(JSON.stringify({ version: pkg.version, pluginVersion: plugin.version, registry: pkg.publishConfig.registry,
-  distTag: pkg.publishConfig.tag, published: false }));
+console.log(JSON.stringify({ version: pkg.version, pluginVersion: plugin.version, distribution: 'github', published: false }));
