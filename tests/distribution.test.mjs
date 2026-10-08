@@ -20,14 +20,14 @@ test('one version owner, explicit release identity and no plugin execution layer
   assert.equal(run().status, 0);
   assert.notEqual(run([], 'v999.0.0').status, 0);
   const pkg = JSON.parse(readFileSync(path.join(temp, 'package.json')));
-  pkg.version = '0.1.1'; writeFileSync(path.join(temp, 'package.json'), JSON.stringify(pkg));
+  pkg.version = '999.0.1'; writeFileSync(path.join(temp, 'package.json'), JSON.stringify(pkg));
   assert.notEqual(run().status, 0, 'version drift blocks release');
   assert.equal(run(['--write']).status, 0);
-  assert.notEqual(run([], 'v0.1.1').status, 0, 'missing versioned notes block tag');
-  writeFileSync(path.join(temp, 'CHANGELOG.md'), '## [0.1.1] - 2026-10-08\nRelease notes.\n');
-  assert.notEqual(run([], 'v0.1.1').status, 0, 'missing translated release notes block tag');
-  writeFileSync(path.join(temp, 'CHANGELOG.zh-TW.md'), '## [0.1.1] - 2026-10-08\n版本說明。\n');
-  assert.equal(run([], 'v0.1.1').status, 0);
+  assert.notEqual(run([], 'v999.0.1').status, 0, 'missing versioned notes block tag');
+  writeFileSync(path.join(temp, 'CHANGELOG.md'), '## [999.0.1] - 2026-10-08\nRelease notes.\n');
+  assert.notEqual(run([], 'v999.0.1').status, 0, 'missing translated release notes block tag');
+  writeFileSync(path.join(temp, 'CHANGELOG.zh-TW.md'), '## [999.0.1] - 2026-10-08\n版本說明。\n');
+  assert.equal(run([], 'v999.0.1').status, 0);
   const manifest = JSON.parse(readFileSync(path.join(root, '.claude-plugin/plugin.json')));
   for (const key of ['hooks', 'mcpServers', 'agents', 'dependencies', 'settings']) assert.equal(manifest[key], undefined);
   const skill = readFileSync(path.join(root, 'skills/ci/SKILL.md'), 'utf8');
@@ -38,7 +38,7 @@ test('one version owner, explicit release identity and no plugin execution layer
 test('release notes derive both languages and workflow cannot publish npm', () => {
   const result = spawnSync(process.execPath, ['quality/release-notes.mjs'], { cwd: root, encoding: 'utf8', timeout: 10000 });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Install from GitHub/);
+  assert.match(result.stdout, /(?:Install from GitHub|Upgrade for clearer AI adoption)/);
   assert.match(result.stdout, /## 繁體中文/);
   const workflow = readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8');
   assert.doesNotMatch(workflow, /npm publish|id-token:|NPM_TOKEN|NODE_AUTH_TOKEN/);

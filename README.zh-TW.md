@@ -16,12 +16,12 @@
 需要 Node >=22.13.0 <23 與 Git；Windows／Ubuntu 已測 Node 22.23.2。安裝在獨立工具目錄，不放進每個專案。不需 npm 帳號。
 
 ```sh
-git clone --branch v0.1.0 --depth 1 https://github.com/cablate/ci-local-guard.git
+git clone --branch v0.1.1 --depth 1 https://github.com/cablate/ci-local-guard.git
 node ci-local-guard/cli.mjs --version
 node ci-local-guard/cli.mjs --help
 ```
 
-已發布版輸出 0.1.0；本分支含未發布變更。Help 指向安裝版 README。private: true 停用 npm registry 發布：**不要透過 npx ci-local-guard 或 npm install ci-local-guard 執行未核對的同名套件**。使用固定 source 或 [GitHub Releases](https://github.com/cablate/ci-local-guard/releases) 的壓縮檔／校驗碼。校驗碼檢查完整性，不是獨立發布者簽章。
+此版本預期輸出 0.1.1。安裝前確認 GitHub Releases 已有該 tag／壓縮檔。Help 指向安裝版 README。private: true 停用 npm registry 發布：**不要透過 npx ci-local-guard 或 npm install ci-local-guard 執行未核對的同名套件**。使用固定 source 或 [GitHub Releases](https://github.com/cablate/ci-local-guard/releases) 的壓縮檔／校驗碼。校驗碼檢查完整性，不是獨立發布者簽章。
 
 ### 離線示範
 

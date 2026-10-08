@@ -16,12 +16,12 @@
 Use Node >=22.13.0 <23 and Git; Node 22.23.2 is tested on Windows/Ubuntu. Install in a dedicated tool directory, not inside every project. No npm account is needed.
 
 ```sh
-git clone --branch v0.1.0 --depth 1 https://github.com/cablate/ci-local-guard.git
+git clone --branch v0.1.1 --depth 1 https://github.com/cablate/ci-local-guard.git
 node ci-local-guard/cli.mjs --version
 node ci-local-guard/cli.mjs --help
 ```
 
-Released output: 0.1.0; this branch contains unreleased changes. Help points to the installed README. private: true disables npm registry publication: **do not use an unverified namesake through npx ci-local-guard or npm install ci-local-guard**. Use pinned source or archives/checksums from [GitHub Releases](https://github.com/cablate/ci-local-guard/releases). Checksums check integrity, not a separate publisher signature.
+Expected output for this version: 0.1.1. Before installing, confirm the tag/archive exists in GitHub Releases. Help points to the installed README. private: true disables npm registry publication: **do not use an unverified namesake through npx ci-local-guard or npm install ci-local-guard**. Use pinned source or archives/checksums from [GitHub Releases](https://github.com/cablate/ci-local-guard/releases). Checksums check integrity, not a separate publisher signature.
 
 ### Offline example
 

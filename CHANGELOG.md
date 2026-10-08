@@ -5,6 +5,12 @@ User-facing changes follow Keep a Changelog. package.json owns the version; expe
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-08
+
+Upgrade for clearer AI adoption from a repository URL, bilingual installed contracts and suppressed raw plan-failure output. Guard remains experimental; local evidence is not Hosted CI PASS.
+
+**Upgrading:** No descriptor or receipt migration. Update your pinned GitHub archive/clone or Claude marketplace plugin and confirm --version is 0.1.1. Failed plan output is no longer echoed; inspect the project-owned adapter locally when needed.
+
 ### Changed
 - Agents can follow the English or Traditional Chinese adoption guide from a repository URL, find installed contracts and distinguish dirty checks, exact-commit results and unverified CI responsibilities. Both guides and references ship in the CLI archive.
 - Contributors can detect bilingual structure and executable-example drift with tools/docs.mjs; release notes use the same parser and paired changelogs rather than a second format.
@@ -46,5 +52,6 @@ Install from GitHub without an npm account. This first experimental release give
 - Prevent redaction-delayed stdout/stderr tails from splicing ordinary evidence lines.
 - Compare Windows test paths with native filesystem canonicalization.
 
-[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0

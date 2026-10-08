@@ -5,6 +5,12 @@
 
 ## [未發布]
 
+## [0.1.1] - 2026-10-08
+
+升級可取得從 repository URL 開始的清楚 AI 接入流程、安裝版雙語契約，以及不回印原始 plan 失敗輸出的修補。Guard 仍是 experimental；本機證據不是 Hosted CI PASS。
+
+**升級：** descriptor 與 receipt 不需遷移。更新固定版 GitHub 壓縮檔／clone 或 Claude marketplace plugin，確認 --version 為 0.1.1。plan 失敗輸出不再回印；需要時在本機檢查專案擁有的 adapter。
+
 ### 變更
 - Agent 可從 repository URL 讀英文或繁中接入指引、找到安裝版契約，並區分 dirty 檢查、exact-commit 結果與未驗證 CI 責任。CLI 壓縮檔包含雙語指引與參考文件。
 - 貢獻者可用 tools/docs.mjs 查出雙語結構與可執行範例漂移；Release notes 使用同一 parser 與配對 changelog，不另維護第二種格式。
@@ -46,5 +52,6 @@
 - 避免遮罩延遲造成 stdout／stderr 日誌行黏接。
 - Windows 測試路徑使用原生 filesystem 正規化。
 
-[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0

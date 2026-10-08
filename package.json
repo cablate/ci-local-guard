@@ -1,6 +1,6 @@
 {
   "name": "ci-local-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-first exact-commit CI preflight and evidence-based CI diagnostics",
   "private": true,
   "license": "MIT",
