@@ -1,6 +1,6 @@
 # Contributing
 
-This open-source, experimental CLI is intended for development agents and their human reviewers. User guidance is currently Traditional Chinese; code identifiers, tests and commit messages use English.
+This open-source, experimental CLI is intended for development agents and their human reviewers. Public guidance uses English with matching Traditional Chinese translations; code identifiers, tests and commit messages use English.
 
 ## Develop and test
 
@@ -57,8 +57,8 @@ remain English-only. Keep corresponding headings, lists and tables aligned;
 commands and fenced code must be identical. Translate explanations, not schema
 keys or paths. Run `node tools/docs.mjs check`; it checks structure, links, inline
 code and complete fenced-code contents, not translation meaning or command safety.
-Review those manually. The README bilingual conversion is in progress; its missing
-translation currently blocks the full check and must be resolved before release.
+Review those manually. The full test suite and CI enforce the same documentation
+check; missing translations or divergent executable examples block delivery.
 
 Use Keep a Changelog categories Added/Changed/Deprecated/Removed/Fixed/Security,
 translated as 新增/變更/棄用/移除/修正/安全性. Put the user benefit first and explain

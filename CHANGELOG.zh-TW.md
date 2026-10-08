@@ -6,6 +6,7 @@
 ## [未發布]
 
 ### 變更
+- Agent 可從 repository URL 讀英文或繁中接入指引、找到安裝版契約，並區分 dirty 檢查、exact-commit 結果與未驗證 CI 責任。CLI 壓縮檔包含雙語指引與參考文件。
 - 貢獻者可用 tools/docs.mjs 查出雙語結構與可執行範例漂移；Release notes 使用同一 parser 與配對 changelog，不另維護第二種格式。
 
 ### 安全性

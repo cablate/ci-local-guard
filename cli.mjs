@@ -229,7 +229,7 @@ async function preflightHead(repo, baseRef, headRef = 'HEAD', event = 'pull_requ
   preflightReport.timing = finishTiming();
   if (result.status === 'unavailable') {
     process.exitCode = 2;
-    preflightReport.nextAction = `No checks ran. Read ${path.join(toolRoot, 'README.md')} — AI 操作入口 / 專案契約. Review this project's existing CI/scripts and commit an explicit .ci-local-guard.json in the candidate before retrying; do not borrow another checkout's rules or weaken protection.`;
+    preflightReport.nextAction = `No checks ran. Read ${path.join(toolRoot, 'README.md')} — AI entry point, then docs/reference.md for project contracts. Review this project's existing CI/scripts and commit an explicit .ci-local-guard.json in the candidate before retrying; do not borrow another checkout's rules or weaken protection.`;
   }
   if (preflightReport.planObligations && preflightReport.planObligations.status !== 'no-declared-missing') {
     process.exitCode = 2;
@@ -392,7 +392,7 @@ Local repository commands (require Git; trust project code before execution):
 Generic push requires explicit committed local policy, exact plan and fresh receipt; not a Hosted CI verdict.
 Exit 0 for offline diagnostics means a report was produced, not CI coverage or savings proved.
 AI guide: ${path.join(toolRoot, 'README.md')}
-AI/Agent: start at AI 操作入口; use JSON reports, not PASS text or exit zero alone.
+AI/Agent: start at AI entry point (README.zh-TW.md: AI 操作入口); use JSON reports, not PASS text or exit zero alone.
 See README.md for schemas, side effects and unverified protection boundaries.
 `);
     return;

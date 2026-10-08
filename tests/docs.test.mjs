@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,45 @@ import { fileURLToPath } from 'node:url';
 import { compare, releaseNotes } from '../tools/docs.mjs';
 
 const cli = fileURLToPath(new URL('../tools/docs.mjs', import.meta.url));
+test('all public bilingual owners pass the same documentation check used by CI', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const result = spawnSync(process.execPath, [cli, 'check', root], { encoding: 'utf8', timeout: 10000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test('public guides resolve relative links and the README offline example produces its claimed evidence', t => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  for (const file of ['README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md']) {
+    const text = readFileSync(path.join(root, file), 'utf8');
+    for (const match of text.matchAll(/\]\(([^)]+)\)/g)) {
+      const target = match[1].split('#')[0];
+      if (!target || /^[a-z]+:/i.test(target)) continue;
+      assert.ok(existsSync(path.resolve(root, path.dirname(file), target)), `${file} has a broken link: ${target}`);
+    }
+  }
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'guard-readme-demo-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
+  const block = [...readme.matchAll(/```sh\r?\n([\s\S]*?)\r?\n```/g)]
+    .map(match => match[1]).find(text => text.includes("writeFileSync('demo-runs.json'"));
+  assert.ok(block, 'README must provide an executable, nonempty offline example');
+  const lines = block.split(/\r?\n/);
+  const code = lines[0].match(/^node --input-type=module -e "(.+)"$/)?.[1];
+  assert.ok(code);
+  const generated = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd: temp, encoding: 'utf8', timeout: 10000 });
+  assert.equal(generated.status, 0, generated.stderr);
+  assert.deepEqual(lines.slice(1), ['node cli.mjs inspect-runs --input demo-runs.json', 'node cli.mjs audit-runs --input demo-runs.json']);
+  for (const verb of ['inspect-runs', 'audit-runs']) {
+    const result = spawnSync(process.execPath, [path.join(root, 'cli.mjs'), verb, '--input', 'demo-runs.json'], { cwd: temp, encoding: 'utf8', timeout: 10000 });
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.savings, null);
+    if (verb === 'inspect-runs') {
+      assert.equal(report.runs[0].executionWallSeconds, 60);
+      assert.equal(report.runs[0].jobSumSeconds, 80);
+    }
+  }
+});
 const en = '# Guide\n[繁體中文](README.zh-TW.md)\n\n## Start\n- Use `--help`.\n```sh\nnode cli.mjs --help\n```\n';
 const zh = '# 指引\n[English](README.md)\n\n## 開始\n- 使用 `--help`。\n```sh\nnode cli.mjs --help\n```\n';
 

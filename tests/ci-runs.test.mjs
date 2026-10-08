@@ -19,11 +19,11 @@ function fixture() {
     runs: [{ run, jobs: { total_count: 2, jobs: [job(11, '05', '15'), job(12, '05', '25')] } }] };
 }
 
-test('README diagnostic JSON examples obey the public contracts and do not assert real coverage', () => {
-  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-  const examples = [...readme.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((match) => JSON.parse(match[1]));
+test('reference diagnostic JSON examples obey the public contracts and do not assert real coverage', () => {
+  const reference = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
+  const examples = [...reference.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((match) => JSON.parse(match[1]));
   const exported = examples.find((item) => item.schemaVersion === 'ci-local-guard/github-export/v1');
-  assert.ok(exported, 'README needs a runnable empty export');
+  assert.ok(exported, 'reference needs a runnable empty export');
   const report = inspectRuns(exported);
   assert.equal(report.schemaVersion, 'ci-local-guard/run-inspection/v1');
   assert.deepEqual(report.runs, []);

@@ -1,10 +1,11 @@
 # CI Local Guard development
 
-Read README.md for current state, adoption and result contracts. This repository
+Read README.md for current state/adoption and docs/reference.md for result contracts. This repository
 uses its own tool through the committed `.ci-local-guard.json`; the project-owned
 adapter is `quality/preflight.mjs`. `package.json` owns the full test command.
 
 - During edits, run relevant `node --test` files; run `npm test` for the full suite.
+- Public document pairs must pass `node tools/docs.mjs check`; the full suite includes it.
 - Before exact-commit evidence, run `node cli.mjs doctor --check --json --repo .`,
   then `node cli.mjs preflight --repo . --base <explicit-base> --head <commit> --json`.
   Commit only when authorized; dirty edits are not included in exact evidence.

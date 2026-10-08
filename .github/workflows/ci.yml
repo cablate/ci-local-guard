@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: '22.23.2'
       - run: node --test tests/*.test.mjs
+      - run: node tools/docs.mjs check
       - run: npm run distribution:check
   plugin:
     runs-on: ubuntu-latest

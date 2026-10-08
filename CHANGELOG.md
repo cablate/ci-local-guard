@@ -6,6 +6,7 @@ User-facing changes follow Keep a Changelog. package.json owns the version; expe
 ## [Unreleased]
 
 ### Changed
+- Agents can follow the English or Traditional Chinese adoption guide from a repository URL, find installed contracts and distinguish dirty checks, exact-commit results and unverified CI responsibilities. Both guides and references ship in the CLI archive.
 - Contributors can detect bilingual structure and executable-example drift with tools/docs.mjs; release notes use the same parser and paired changelogs rather than a second format.
 
 ### Security

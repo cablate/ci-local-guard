@@ -7,7 +7,7 @@ description: Use CI Local Guard for exact-commit preflight, diagnosing failed lo
 
 Use the bundled CLI, not a guessed registry package or a second runner:
 `node "${CLAUDE_PLUGIN_ROOT}/cli.mjs" --help`.
-The plugin root contains the same core as the npm distribution; no npm install
+The plugin root contains the same core as the GitHub CLI archive; no npm install
 is needed for this integration. Node >=22.13 <23 and Git must already be present.
 Resolve the plugin root to an absolute path; quote paths for the active shell.
 If root substitution is unavailable, resolve it from this skill's installation

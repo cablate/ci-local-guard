@@ -220,17 +220,19 @@ test('candidate README preserves adoption boundaries without internal evidence i
   // Known internal identifiers only: this is not a comprehensive secret scanner.
   assert.doesNotMatch(readme, /[A-Z]:[\\/](?:Users|_CabLate_Agents)[\\/]|\b[0-9a-f]{40}\b|\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/i);
   assert.doesNotMatch(readme, /\b(?:run|job|artifact)\s*\**\s*[0-9]{10,}\b/i);
-  assert.match(readme, /generic.*不支援 pre-push/);
+  assert.match(readme, /generic pre-push is unsupported without explicit committed push policy/);
   assert.match(readme, /private: true/);
   assert.match(readme, /GitHub Release/);
-  assert.match(readme, /CLI.*不是惡意程式 sandbox|工具不是惡意程式 sandbox/);
-  const intro = readme.slice(0, readme.indexOf('<details>'));
-  assert.match(intro, /先選你的情境/);
-  assert.match(intro, /採用底線.*不代表安全保證/);
+  assert.match(readme, /not a security guarantee or a sandbox/);
+  const intro = readme.slice(0, readme.indexOf('## Quick start'));
+  assert.match(intro, /Choose your task/);
+  assert.match(intro, /Adoption boundary.*not a security guarantee/);
   assert.equal((readme.match(/<details>/g) || []).length, (readme.match(/<\/details>/g) || []).length);
-  const principles = readme.slice(readme.indexOf('## PRINCIPLE：'), readme.indexOf('## 現有能力與邊界'));
+  const principles = readme.slice(readme.indexOf('## PRINCIPLE'), readme.indexOf('## TODO+'));
   assert.equal((principles.match(/^\d+\. /gm) || []).length, 10);
-  const examples = [...readme.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((match) => JSON.parse(match[1]));
+  assert.match(readme, /\(docs\/reference\.md\)/);
+  const reference = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
+  const examples = [...reference.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((match) => JSON.parse(match[1]));
   const descriptor = examples.find((item) => item.schemaVersion === 'ci-local-guard/project/v1');
   assert.equal(validatePreflightConfiguration(descriptor).entrypoint, 'quality/preflight.mjs');
 });
@@ -243,8 +245,8 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
   mkdirSync(stage); mkdirSync(consumer);
   try {
     const copyFile = (name) => writeFileSync(path.join(stage, name), readFileSync(path.join(source, name)));
-    for (const name of ['cli.mjs', 'README.md', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md']) copyFile(name);
-    for (const directory of ['src', 'hooks']) {
+    for (const name of ['cli.mjs', 'README.md', 'README.zh-TW.md', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md']) copyFile(name);
+    for (const directory of ['src', 'hooks', 'docs']) {
       mkdirSync(path.join(stage, directory));
       for (const file of readdirSync(path.join(source, directory))) copyFile(`${directory}/${file}`);
     }
@@ -275,9 +277,9 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     assert.match(runNpx(['--help']), /public-experimental/);
     const page = path.join(isolated, 'check.log'); writeFileSync(page, 'npx evidence');
     assert.equal(JSON.parse(runNpx(['read-evidence', '--file', page])).text, 'npx evidence');
-    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'cli.mjs', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
+    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md', 'cli.mjs', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
     assert.ok(packed.files.some(({ path: file }) => file === 'src/ci-runs.mjs'));
-    for (const file of ['LICENSE', 'README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
+    for (const file of ['LICENSE', 'README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
       assert.ok(packed.files.some((entry) => entry.path === file), `package needs ${file}`);
     }
     npm(['install', path.join(root, packed.filename), '--no-audit', '--no-fund', '--package-lock=false'], consumer);
@@ -299,7 +301,8 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     assert.match(output, /compare-runs/);
     const guidePath = output.match(/^AI guide: (.+)$/m)?.[1].trim();
     assert.equal(guidePath, path.join(consumer, 'node_modules', 'ci-local-guard', 'README.md'));
-    assert.match(readFileSync(guidePath, 'utf8'), /## AI 操作入口/);
+    assert.match(readFileSync(guidePath, 'utf8'), /## AI entry point/);
+    assert.match(readFileSync(path.join(path.dirname(guidePath), 'docs/reference.md'), 'utf8'), /ci-local-guard\/project\/v1/);
     // Installed platform bin must run a committed generic project, not only display help.
     const project = path.join(root, 'project'); mkdirSync(project); mkdirSync(path.join(project, 'quality'));
     const gitEnv = cleanGitEnvironment();
