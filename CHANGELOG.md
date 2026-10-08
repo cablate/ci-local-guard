@@ -5,6 +5,13 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- Added ci verify: checks the commit you are about to push. It decides which workflows the push or pull request triggers, runs the workflow static check and replays the triggered Linux jobs locally, then lists what is expected to fail, what passed locally and what only GitHub can verify.
+- Added ci replay: runs one job of a committed workflow in local Linux containers with act 0.2.89, reports the failing step, command, failed tests and log location, and removes only the containers, networks and volumes it created.
+- Added ci discover: reads committed workflows, including local reusable workflows and composite actions, and lists the commands CI runs, which jobs can run locally, local tool readiness and next commands. No adapter needed.
+- Added ci history: the hosted wait-time and job-duration baseline for a workflow, the time and billable minutes used by failed attempts, and with --reproduce, which failures a local ci verify would have caught.
+- Added ci check for offline actionlint/zizmor baseline scans of committed workflows. Existing commands remain compatible.
+
 ### Changed
 - Added the inspection-bench banner to both READMEs. Its static image ships with the CLI archive; the editable HTML/JS artwork stays in the repository.
 - Rewrote the guides around everyday tasks: setup, reading results, investigating failures and maintaining an installation. Update and uninstall commands now have separate examples.

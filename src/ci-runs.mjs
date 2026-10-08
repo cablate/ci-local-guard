@@ -5,7 +5,7 @@ const positiveId = (value) => Number.isSafeInteger(value) && value > 0;
 const repositoryIdentity = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)
   && value.split('/').every((part) => part !== '.' && part !== '..');
 
-function runSource(run) {
+export function runSource(run) {
   const branch = run.head_branch ?? null;
   const repository = run.head_repository == null ? null : run.head_repository.full_name;
   if ((branch !== null && (typeof branch !== 'string' || !branch.length
@@ -19,7 +19,7 @@ function runSource(run) {
 /** Fixed host/method; never return raw stderr or provider payload in an error. */
 export function githubGet(endpoint, { execute = spawnSync } = {}) {
   const route = typeof endpoint === 'string' && endpoint.match(/^repos\/([^/]+\/[^/]+)\/(.+)$/);
-  const listing = /^workflows\/[A-Za-z0-9_.-]+\.ya?ml\/runs\?status=completed&per_page=(?:[1-9]|1\d|2[0-5])&page=1$/;
+  const listing = /^workflows\/[A-Za-z0-9_.-]+\.ya?ml\/runs\?status=completed&per_page=(?:[1-9]|[1-9]\d|100)&page=(?:[1-9]|10)$/;
   const attempt = /^runs\/[1-9]\d*\/attempts\/[1-9]\d*(?:\/jobs\?per_page=100&page=(?:[1-9]|10))?$/;
   const actions = route?.[2].startsWith('actions/') ? route[2].slice(8) : null;
   if (!route || !repositoryIdentity(route[1]) || !(actions && (listing.test(actions) || attempt.test(actions)))) {
@@ -35,7 +35,20 @@ export function githubGet(endpoint, { execute = spawnSync } = {}) {
   catch { throw new Error('GitHub metadata response is not valid JSON'); }
 }
 
-function collectAttemptJobs(prefix, run, source, read) {
+// One job's plain-text log, read-only. Terminal escapes are stripped; the text
+// is untrusted data and is never followed as instructions.
+export function githubJobLog(repository, jobId, { execute = spawnSync } = {}) {
+  if (!repositoryIdentity(repository) || !positiveId(jobId)) throw new Error('Invalid job log request');
+  const result = execute('gh', ['api', '--hostname', 'github.com', '--method', 'GET', '--allow-escape-sequences',
+    '-H', 'X-GitHub-Api-Version: 2026-03-10', `repos/${repository}/actions/jobs/${jobId}/logs`], {
+    encoding: 'utf8', shell: false, windowsHide: true, timeout: 30000, maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, GH_HOST: 'github.com', GH_DEBUG: '', GH_PROMPT_DISABLED: '1' },
+  });
+  if (result.error || result.status !== 0) throw new Error('GitHub job log GET failed; the log may have expired or access is missing');
+  return String(result.stdout).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+}
+
+export function collectAttemptJobs(prefix, run, source, read) {
   const attempt = run.run_attempt;
   let total = null;
   const jobs = [];

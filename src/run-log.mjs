@@ -45,7 +45,9 @@ export async function runLogged(command, args, repo, {
   receiptSchema,
   requireReceipt = false,
   validateAfter,
+  captureStdout = false,
 } = {}) {
+  if (typeof captureStdout !== 'boolean') throw new Error('Invalid stdout capture option');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647) throw new Error('Invalid execution timeout');
   if (!/^[a-z][a-z0-9-]*$/.test(stage)) throw new Error('Invalid log stage');
   if (validateAfter !== undefined && typeof validateAfter !== 'function') throw new Error('Invalid post-execution validator');
@@ -57,6 +59,8 @@ export async function runLogged(command, args, repo, {
   const fd = openSync(logFile, 'wx', 0o600);
   const started = performance.now();
   let bytes = 0;
+  let capturedStdout = '';
+  let capturedBytes = 0;
   let failure;
   let loggingFailed = false;
   let collectedLogs = { status: 'not-requested', count: 0 };
@@ -153,7 +157,15 @@ export async function runLogged(command, args, repo, {
       };
       const stdoutLines = lineSink();
       const stderrLines = lineSink();
-      const stdout = createRedactor(env, stdoutLines);
+      const stdout = createRedactor(env, text => {
+        stdoutLines(text);
+        if (captureStdout && !loggingFailed) {
+          // Capture only redacted stdout, with the same hard budget as the log.
+          const size = Buffer.byteLength(text);
+          if (capturedBytes + size <= maxBytes) { capturedStdout += text; capturedBytes += size; }
+          else stop('stdout-budget-exceeded');
+        }
+      });
       const stderr = createRedactor(env, stderrLines);
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
@@ -284,6 +296,7 @@ export async function runLogged(command, args, repo, {
     error.durationMs = durationMs;
     error.collectedLogs = collectedLogs;
     error.projectReceipt = projectReceipt;
+    if (captureStdout) error.stdout = capturedStdout;
     error.preserveCheckout = terminationUncertain;
     error.executionFailure = { schemaVersion: 'ci-local-guard/execution-failure/v1', stage,
       processStarted, exitCode: processStarted && Number.isInteger(exitCode) && exitCode >= 0 ? exitCode : null,
@@ -299,7 +312,8 @@ export async function runLogged(command, args, repo, {
   if (!retained) {
     try { unlinkSync(logFile); } catch { retained = true; }
   }
-  return { durationMs, logFile: retained ? logFile : null, collectedLogs, projectReceipt };
+  return { durationMs, logFile: retained ? logFile : null, collectedLogs, projectReceipt,
+    ...(captureStdout ? { stdout: capturedStdout } : {}) };
 }
 
 export function executionTimeout(env = process.env) {

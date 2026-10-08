@@ -19,6 +19,12 @@ placeholders before running commands; do not substitute a guessed registry packa
 
 ## Choose the task
 
+- **New to the repository:** run `ci discover --repo <repo> --summary` to see the
+  commands CI runs, which jobs can run locally and the next commands.
+- **About to push:** commit, then run `ci verify --repo <repo> --summary`. Read
+  verdict, expectedFailures, hostedOnly and notVerified. Fix expected failures
+  in the working tree with the listed command, commit and verify again. Tell the
+  user what still needs GitHub. Replays execute project code in containers.
 - **Uncommitted edits:** use the project's normal targeted tests.
 - **A committed candidate:** use preflight with explicit base and head.
 - **Failed local checks:** inspect the report, then read the relevant log pages.

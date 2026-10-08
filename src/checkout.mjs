@@ -13,7 +13,7 @@ export function observeCheckout(repo) {
 }
 
 // Run project gates against the pushed commit, never the user's dirty worktree.
-export async function withExactCheckout(repo, head, action, { timings } = {}) {
+export async function withExactCheckout(repo, head, action, { timings, linkDependencies = true } = {}) {
   if (!/^[a-f0-9]{40}$/.test(head || '') || typeof action !== 'function') throw new Error('Invalid exact checkout request');
   const started = performance.now();
   const record = (phase, start, status) => {
@@ -33,7 +33,7 @@ export async function withExactCheckout(repo, head, action, { timings } = {}) {
     const dependencies = path.join(repo, 'node_modules');
     const lock = path.join(repo, 'package-lock.json');
     const targetLock = path.join(checkout, 'package-lock.json');
-    if (existsSync(dependencies) && existsSync(lock) && existsSync(targetLock)
+    if (linkDependencies && existsSync(dependencies) && existsSync(lock) && existsSync(targetLock)
       && readFileSync(lock).equals(readFileSync(targetLock))) {
       symlinkSync(dependencies, path.join(checkout, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
       linkedDependencies = true;

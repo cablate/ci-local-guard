@@ -248,7 +248,11 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     for (const name of ['cli.mjs', 'README.md', 'README.zh-TW.md', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md']) copyFile(name);
     for (const directory of ['src', 'hooks', 'docs']) {
       mkdirSync(path.join(stage, directory));
-      for (const file of readdirSync(path.join(source, directory))) copyFile(`${directory}/${file}`);
+      for (const entry of readdirSync(path.join(source, directory), { recursive: true, withFileTypes: true })) {
+        const relative = path.relative(source, path.join(entry.parentPath, entry.name)).replaceAll('\\', '/');
+        if (entry.isDirectory()) mkdirSync(path.join(stage, relative), { recursive: true });
+        else copyFile(relative);
+      }
     }
     mkdirSync(path.join(stage, 'assets/banner'), { recursive: true });
     for (const file of ['banner.webp', 'index.html']) copyFile(`assets/banner/${file}`);
@@ -279,7 +283,8 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     assert.match(runNpx(['--help']), /public-experimental/);
     const page = path.join(isolated, 'check.log'); writeFileSync(page, 'npx evidence');
     assert.equal(JSON.parse(runNpx(['read-evidence', '--file', page])).text, 'npx evidence');
-    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'README.zh-TW.md', 'assets/banner/banner.webp', 'docs/reference.md', 'docs/reference.zh-TW.md', 'cli.mjs', 'package.json', 'LICENSE', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
+    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'README.zh-TW.md', 'assets/banner/banner.webp', 'docs/reference.md', 'docs/reference.zh-TW.md', 'cli.mjs', 'package.json', 'LICENSE', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|src\/vendor\/yaml\/([\w.-]+\/)*[\w-]+\.js|src\/vendor\/yaml\/LICENSE|hooks\/pre-(commit|push))$/.test(file)));
+    assert.ok(packed.files.some(({ path: file }) => file === 'src/vendor/yaml/LICENSE'), 'vendored parser ships with its license');
     assert.ok(packed.files.some(({ path: file }) => file === 'src/ci-runs.mjs'));
     for (const file of ['LICENSE', 'README.md', 'README.zh-TW.md', 'assets/banner/banner.webp', 'docs/reference.md', 'docs/reference.zh-TW.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
       assert.ok(packed.files.some((entry) => entry.path === file), `package needs ${file}`);

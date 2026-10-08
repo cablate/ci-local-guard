@@ -5,12 +5,121 @@ This guide is for connecting a project, reading results and maintaining an insta
 
 The examples use placeholders such as <project> and <commit>. Replace them with the project path and Git revision you intend to check. Examples beginning with ci-local-guard assume an installed command; with a source clone, use node followed by the full path to cli.mjs.
 
+- [Understand, check and replay CI](#understand-check-and-replay-ci-unreleased)
 - [Connect a project](#connect-a-project)
 - [Read a report](#read-a-report)
 - [Read failure logs](#read-failure-logs)
 - [Analyze CI timings](#analyze-ci-timings)
 - [Update or remove the tool](#updating-disabling-and-removing)
 - [Troubleshoot](#troubleshooting)
+
+## Understand, check and replay CI (unreleased)
+
+These commands are in the development source, not in v0.1.1. None of them needs a project adapter. A typical session for an AI agent:
+
+1. Run ci discover to learn what CI runs and what can run locally.
+2. While editing, run the CI commands it lists directly in the working tree.
+3. After committing and before pushing, run ci verify. Use ci check or ci replay to look at one part in detail.
+4. Report what passed locally, what is expected to fail and what still needs hosted CI.
+
+### Check a commit before pushing
+
+```sh
+node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary --output <new-report.json>
+```
+
+Verify answers one question: if this commit is pushed, what will fail? It works out which workflows the push (or --event pull_request) triggers from their branch, tag and path filters, runs the static check, and replays every triggered Linux job leg. Jobs needed by a replayed job run as part of it. The changed files come from --base (default: the branch's upstream for push, origin's default branch for pull_request); if they cannot be determined, path-filtered workflows are marked unknown and still checked.
+
+The verdict field is a one-line summary. expectedFailures lists static findings and failed replay steps with their commands and log locations. passedLocally lists replayed legs. hostedOnly lists what only GitHub can check: Windows or macOS runners, jobs that use secrets or a deployment environment. notVerified lists what could not be checked locally and why, such as missing act or a reusable workflow that is only called. notTriggered lists workflows this event does not start, with the filter that excluded them.
+
+| Result | Meaning | Exit |
+|---|---|---|
+| clear-locally | Everything checkable locally passed; hostedOnly still needs GitHub | 0 |
+| expected-to-fail | A static finding or replayed step failed | 1 |
+| blocked | Inputs are invalid or there are no workflows | 2 |
+| incomplete | Some local check could not run or finish; see notVerified | 3 |
+
+--static-only skips replays for a quick check. Replay options --platform, --pull, --timeout and --act-binary are passed through.
+
+### Measure what failures cost
+
+```sh
+node "<tool-directory>/cli.mjs" ci history --repo "<project>" --workflow ci.yml --limit 50 --save-export <new-export.json> --summary
+node "<tool-directory>/cli.mjs" ci history --repo "<project>" --workflow ci.yml --input <new-export.json> --reproduce --summary
+```
+
+History reads completed runs of one workflow with gh (read-only), including earlier attempts that a rerun replaced. baseline shows successful runs' wait time (median and p90) and each job's median duration, so the job that sets the wait time is visible. failures shows how many attempts failed and the waiting and billable minutes they used. Billable minutes round each job up to a minute and ignore runner multipliers and free allowances, so treat them as an estimate.
+
+--reproduce runs ci verify on each failed commit, up to --reproduce-limit (default 5), and classifies every failed hosted job:
+
+- reproduced-locally: the same job failed locally, so a pre-push verify would have caught it.
+- passed-locally: the local replay passed; an environment difference or flaky test is likely.
+- outside-local-coverage: the job needs a runner or secrets that local replay does not have.
+- undetermined: the job could not be matched or checked; the reason is given.
+
+baseline.speedLeads points at where time goes: the job that finishes last (and so sets the wait), a step that dominates it, setup overhead, and matrix legs that take very different times. Each lead carries its numbers and says what to measure next; none is a proven saving. To see inside a test step, add --test-timing "<job name>" --compare-job "<other job>": history reads that job's logs from a few successful runs (--samples, default 3), takes test durations from TAP output, and lists the slowest tests, their ratio to the other job and how parallel the step really was.
+
+avoidable adds up the attempts, waiting and minutes of the first class. --save-export keeps the downloaded data so a later --input run does not fetch it again. The result is measured (exit 0) or blocked (exit 2).
+
+### Discover the CI
+
+```sh
+node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
+```
+
+Discovery reads the committed version (HEAD, or --head), not unfinished edits. For each top-level GitHub workflow it reports triggers, jobs, needs, matrix size and the steps' run commands with line numbers. ciCommands lists those commands once each and the package scripts they call, so an agent can reuse the project's own checks instead of guessing. Each job is marked replayable, hosted-only (for example Windows or macOS runners) or unknown (reusable workflows, dynamic matrices, runs-on expressions).
+
+The tools field shows whether actionlint, zizmor, act, a Linux Docker engine and gh are available; only their version commands are run. nextActions gives the next commands as argument lists. Replay is only suggested for workflows that run on pull_request, because release or deploy workflows can have side effects. Root markers for GitLab, Jenkins, Woodpecker, Nx, Turborepo, Dagger, Earthly and Bazel are listed but not analyzed. Workflow structure is what the YAML declares: triggers, if-conditions and expressions are not evaluated.
+
+### Check workflows statically
+
+```sh
+node "<tool-directory>/cli.mjs" ci check --repo "<project>" --head <commit> --provider actionlint --summary --output <new-report.json>
+node "<tool-directory>/cli.mjs" ci check --repo "<project>" --head <commit> --provider zizmor --binary "<absolute-tool-path>" --summary --output <another-new-report.json>
+```
+
+The supported versions are actionlint 1.7.12 and zizmor 1.30.1. No tool is automatically downloaded. actionlint uses the existing Guard cache or ACTIONLINT_BIN; zizmor accepts ZIZMOR_BIN. Either accepts an explicit absolute --binary path. Version matching does not authenticate a binary: obtain it from its official publisher and verify its checksum before running it.
+
+Checks copy only committed top-level workflow blobs into a temporary directory. They do not run Git checkout hooks, smudge filters, project tests or the workflows themselves. This is a tool-baseline scan: project tool configuration is not loaded, zizmor inline ignores are disabled, and actionlint's ShellCheck/pyflakes integrations are disabled. Each check shares a 30-second budget and accepts at most 128 workflows (1 MiB each, 8 MiB total); limits or malformed output never count as a clean scan. --summary shows at most 20 findings and the full count.
+
+### Replay a job locally
+
+```sh
+node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/workflows/ci.yml --job test --matrix os:ubuntu-latest --summary --output <new-report.json>
+```
+
+Replay runs one job, and the jobs it needs, from a committed workflow in local Linux containers using [act](https://github.com/nektos/act) 0.2.89. It needs act on PATH, in ACT_BIN or given with --act-binary, and a local Linux Docker engine. It executes the project's code, so use it with trusted repositories.
+
+| Option | Meaning |
+|---|---|
+| --head | Commit to replay; default HEAD. Uncommitted edits are not included |
+| --event | push (default), pull_request or workflow_dispatch; must be declared by the workflow |
+| --matrix key:value | Select matrix legs; repeatable. Unselected legs are listed in coverage.notSelected |
+| --platform label=image | Image for a runs-on label. Defaults map ubuntu-latest, ubuntu-24.04 and ubuntu-22.04 to catthehacker/ubuntu act images |
+| --pull | Allow pulling missing images. Without it a missing image blocks the run |
+| --offline | Give the job container no network. Default is a network created for this run |
+| --timeout | Seconds before the run is stopped; default CI_LOCAL_GUARD_TIMEOUT_SECONDS or 900 |
+| --ref | Branch or tag ref for the event; default the current branch. Recorded as caller-declared |
+
+What replay isolates and what it does not:
+
+- It replays the exact commit from a separate checkout. Dependencies are not linked from your working tree.
+- Secrets, variables, inputs and .env files are empty. No GitHub token is passed. Ambient .actrc and act settings are not read.
+- The Docker socket is not mounted, the cache server is off, and job containers start with an init process so orphaned processes are reaped as on a hosted VM.
+- Images, preinstalled tools and permissions differ from GitHub-hosted runners. Actions used by the job may be downloaded on first use.
+
+Before running, Guard computes every container, network and volume name act will use for these jobs and stops if any already exists. Afterwards, including after a timeout or Ctrl-C, it removes only containers labelled for this run and resources with those exact names, plus anonymous volumes of those containers. It never prunes or matches by prefix. act's shared act-toolcache volume and pulled images are kept and reported under resources.shared. If termination of act cannot be confirmed, nothing is removed and the result is incomplete.
+
+| Result | Meaning | Exit |
+|---|---|---|
+| passed | Every selected leg of the job succeeded and cleanup was confirmed | 0 |
+| failed | A workflow step failed | 1 |
+| blocked | Inputs, act, Docker, an image or a free resource name is missing; nothing ran | 2 |
+| incomplete | Timeout, cancellation, a job failure outside workflow steps, or unconfirmed cleanup | 3 |
+
+For a failed step, failures lists the job, matrix leg, step name, workflow line, the run command, the last lines of its output and any TAP "not ok" test names. These are observed output, not a diagnosed cause. evidence.reader holds read-evidence arguments for that step's section of the retained log. nextActions suggests reading that section, opening the workflow line, running the command in the working tree, and replaying again after committing a fix. A pass covers only coverage.replayed; verify coverage.notReplayed and coverage.notSelected on hosted CI.
+
+Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1 and ci-local-guard/ci-replay/v1. Read identity, scope, coverage and issues alongside outcome. Comparing workflow changes and optimization experiments are planned, not implemented. Existing command schemas and exit codes are unchanged.
 
 ## Connect a project
 
@@ -159,7 +268,7 @@ Add plan: { entrypoint: quality/plan.mjs, dependencies: none } to the descriptor
 
 The adapter writes only project-plan/v1 JSON to stdout, with identity, changedFiles, eventContext, jobs and needsReview. Each job has a unique id, boolean selected, reason and owners. changedFiles must match the ACDMRT paths from Git diff exactly. Exit 0 means needsReview false; exit 2 means true.
 
-```powershell
+```sh
 ci-local-guard preflight --repo <project> --base <base-ref> --head <candidate-ref> --event push --json
 ci-local-guard plan --repo <project> --base <base-ref> --head <candidate-ref> --event push --ref refs/heads/main --json
 ci-local-guard preflight --repo <project> --base <base-ref> --head <candidate-ref> --event push --ref refs/heads/main --with-plan --json
@@ -190,7 +299,7 @@ pre-push compares with the remote old SHA supplied by Git. Missing old objects, 
 
 Run these separately, with the project's approval:
 
-```powershell
+```sh
 ci-local-guard install-hook --repo <project>
 ci-local-guard uninstall-hook --repo <project>
 ```
@@ -203,7 +312,7 @@ Legacy ci-local-guard.modelCheckout settings are ignored. Guard leaves old setti
 
 Use existing gh login and read access to GitHub Actions. You can collect several runs or fetch one exact run/attempt:
 
-```powershell
+```sh
 ci-local-guard collect-runs --repository example/project --workflow ci.yml > runs.json
 ci-local-guard collect-run --repository example/project --run-id <id> --attempt <n> --workflow-id <id> --head <exact-SHA> > one-run.json
 ci-local-guard inspect-runs --input runs.json

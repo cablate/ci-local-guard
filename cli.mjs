@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import { ACTIONLINT_VERSION, ensureActionlint } from './src/actionlint.mjs';
+import { ciCommand } from './src/ci-command.mjs';
 import { observeCheckout, withExactCheckout } from './src/checkout.mjs';
 import { runLogged } from './src/run-log.mjs';
 import { checkSetup } from './src/readiness.mjs';
@@ -351,6 +352,7 @@ async function main() {
     return;
   }
   const [verb, ...rest] = process.argv.slice(2);
+  if (verb === 'ci') return ciCommand(rest);
   if (verb === 'pre-push') pushReport = { schemaVersion: 'ci-local-guard/push-report/v1', repo: null, adapter: null,
     outcome: 'blocked', completenessVerified: false, hostedPolicyStatus: 'unverified', updates: [], failure: null,
     inputSource: 'git-pre-push-stdin-format', hostedProvenanceVerified: false,
@@ -379,6 +381,27 @@ Read-only GitHub collection (requires gh and Actions read access):
   collect-run --repository owner/name --run-id <id> --attempt <n> --workflow-id <id> --head <exact SHA>
 
 Local repository commands (require Git; trust project code before execution):
+  ci discover --repo <project> [--head <ref>] [--summary] [--output <new-file>]
+    Start here. Parses committed workflows: jobs, the commands CI runs, which jobs can be replayed
+    locally, local tool readiness and next commands as argv. No adapter, download or project execution.
+  ci verify --repo <project> [--head <ref>] [--event push|pull_request] [--base <ref>] [--target <branch>] [--ref <ref>]
+            [--static-only] [--platform <label>=<image>]... [--pull] [--timeout <seconds>] [--act-binary <path>] [--summary] [--output <new-file>]
+    Before pushing: which workflows this commit triggers, static check, and local replay of the triggered Linux jobs.
+    Lists expected failures, what passed locally and what only GitHub can verify. Exit 0 clear locally,
+    1 expected to fail, 2 blocked, 3 incomplete.
+  ci history --repo <project> --workflow <file.yml> [--repository owner/name] [--limit 1..200] [--reproduce [--reproduce-limit 1..20]]
+             [--input <saved-export.json>] [--save-export <new-file>] [--test-timing "<job>" [--compare-job "<job>"] [--samples 1..10]]
+             [--platform ...] [--timeout ...] [--summary] [--output <new-file>]
+    Hosted baseline and failure cost from completed runs (read-only, needs gh). --reproduce runs ci verify on each failed
+    commit and classifies failures: reproduced locally (avoidable), passed locally, outside local coverage, undetermined.
+  ci check --repo <project> [--head <ref>] [--provider actionlint|zizmor] [--binary <trusted-absolute-path>] [--summary] [--output <new-file>]
+    Offline static baseline only. Pinned installed tools; no automatic downloads or workflow execution.
+  ci replay --repo <project> --workflow .github/workflows/<file> --job <id> [--head <ref>] [--event push|pull_request|workflow_dispatch]
+            [--matrix key:value]... [--platform <runs-on-label>=<image>]... [--pull] [--offline] [--timeout <seconds>]
+            [--ref refs/heads/<name>] [--act-binary <path>] [--summary] [--output <new-file>]
+    Runs one job (and its needs) of a committed workflow in local Linux containers with act 0.2.89.
+    Executes project code. Empty secrets/vars, no Docker socket, no ambient act config. Removes only
+    this run's containers, networks and volumes. Exit 0 passed, 1 a workflow step failed, 2 blocked, 3 incomplete.
   preflight --repo <project> --base <ref> [--head <ref>] [--event pull_request|push|workflow_dispatch] [--json] [--with-plan]
     --with-plan: generic committed adapter; accepts plan ref context; fresh execution and receipt required
   plan --repo <project> --base <ref> --head <ref> [--event pull_request|push|workflow_dispatch] [--json]

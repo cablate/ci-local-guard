@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const MAX_FILE = 24 * 1024 * 1024;
 const fail = code => { throw Object.assign(new Error(code), { evidenceCode: code }); };
+export const evidenceVersion = file => version(lstatSync(file, { bigint: true }));
 const version = stat => createHash('sha256').update([stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':')).digest('hex');
 
 // Explicit caller-selected file only: never follow paths or instructions in reports.

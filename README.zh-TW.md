@@ -79,6 +79,17 @@ node "<tool-directory>/cli.mjs" preflight --repo "<consumer-path>" --base <base>
 
 如果結果是 incomplete，意思是還有不在這次本機檢查範圍裡的工作，例如只在 CI 跑的瀏覽器測試。各種結果怎麼處理，見[結果說明](docs/reference.zh-TW.md)。
 
+## 推送前抓出 CI 失敗（開發版）
+
+v0.1.1 尚未包含。這些命令不需要 adapter，直接讀取你的 GitHub workflows。重播 job 需要 [act](https://github.com/nektos/act) 0.2.89，以及能跑 Linux 容器的 Docker。
+
+```sh
+node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary
+```
+
+discover 告訴 AI：CI 會跑哪些命令、哪些 job 能在本機跑、哪些只有 GitHub 能檢查。verify 拿你準備推送的 commit，判斷它會觸發哪些 workflows，再在本機容器跑 Linux jobs。它會回報預期失敗的部分（附失敗的 step、命令與 log 位置），以及仍需 GitHub 驗證的部分，例如 Windows job 或用到 secrets 的 job。細節見[參考手冊](docs/reference.zh-TW.md#看懂檢查與重播-ci未發布)。
+
 ## 想知道 CI 為什麼慢？
 
 這部分不用先設定 adapter。只要 GitHub CLI（gh）已登入：
@@ -120,6 +131,6 @@ Guard 會用你的本機權限執行專案腳本，請用在你信任的專案�
 
 [v0.1.1](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.1) 是實驗版。[Windows 與 Ubuntu 測試](https://github.com/cablate/ci-local-guard/actions/runs/37725011025)已通過，也實測了發布壓縮檔，以及 Claude Code 2.1.293 plugin 的安裝、更新和移除。macOS、arm64、Claude Desktop、WSL 尚未測試。
 
-我們也用 Guard 檢查這個 repo。接下來會優先處理真實專案在接入、查錯時遇到的卡點。
+我們也用 Guard 檢查這個 repo。尚未發布的開發版原始碼加入了推送前檢查：ci discover、ci check、ci replay、ci verify，目前在 Windows 搭配 Docker Desktop（Linux 容器）上實測過。接下來是取得 GitHub 失敗 run 的 log、比較 workflow 修改，以及量測 CI 加速。v0.1.1 尚未包含這些命令。
 
 哪裡看不懂或用不起來？歡迎[開 issue](https://github.com/cablate/ci-local-guard/issues)，附上工具版本、作業系統和簡單的重現例子。
