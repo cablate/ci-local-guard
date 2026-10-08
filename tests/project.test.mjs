@@ -250,6 +250,8 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
       mkdirSync(path.join(stage, directory));
       for (const file of readdirSync(path.join(source, directory))) copyFile(`${directory}/${file}`);
     }
+    mkdirSync(path.join(stage, 'assets/banner'), { recursive: true });
+    for (const file of ['banner.webp', 'index.html']) copyFile(`assets/banner/${file}`);
     writeFileSync(path.join(stage, 'private-note.env'), 'synthetic-private-marker');
     mkdirSync(path.join(stage, 'evidence')); writeFileSync(path.join(stage, 'evidence/raw.json'), '{}');
     mkdirSync(path.join(stage, 'tests')); writeFileSync(path.join(stage, 'tests/fixture.json'), '{}');
@@ -277,9 +279,9 @@ test('public package allowlist excludes evidence/fixtures and installs a usable 
     assert.match(runNpx(['--help']), /public-experimental/);
     const page = path.join(isolated, 'check.log'); writeFileSync(page, 'npx evidence');
     assert.equal(JSON.parse(runNpx(['read-evidence', '--file', page])).text, 'npx evidence');
-    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md', 'cli.mjs', 'package.json', 'LICENSE', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
+    assert.ok(packed.files.every(({ path: file }) => ['README.md', 'README.zh-TW.md', 'assets/banner/banner.webp', 'docs/reference.md', 'docs/reference.zh-TW.md', 'cli.mjs', 'package.json', 'LICENSE', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
     assert.ok(packed.files.some(({ path: file }) => file === 'src/ci-runs.mjs'));
-    for (const file of ['LICENSE', 'README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
+    for (const file of ['LICENSE', 'README.md', 'README.zh-TW.md', 'assets/banner/banner.webp', 'docs/reference.md', 'docs/reference.zh-TW.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {
       assert.ok(packed.files.some((entry) => entry.path === file), `package needs ${file}`);
     }
     npm(['install', path.join(root, packed.filename), '--no-audit', '--no-fund', '--package-lock=false'], consumer);

@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CI Local Guard — Banner concept</title>
+<style>
+  :root{
+    --paper:#f1ece1; --paper-2:#faf7f0; --ink:#1d1c1a; --graph:#3b3934;
+    --mute:#6c675d; --coral:#ff5a36; --coral-ink:#b93518;
+    --mono:ui-monospace,"SFMono-Regular","Cascadia Mono","Segoe UI Mono",Consolas,"Liberation Mono",monospace;
+    --sans:"Helvetica Neue","Segoe UI",Arial,sans-serif;
+    --zh:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:#e3ded2;color:var(--ink);font-family:var(--sans);padding:clamp(12px,3vw,40px)}
+  .board{margin:0 auto;max-width:1600px}
+
+  /* ---------- banner ---------- */
+  .banner{position:relative;display:grid;grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr);
+    aspect-ratio:1600/650;background:var(--paper);overflow:hidden;isolation:isolate;
+    box-shadow:0 1px 0 rgba(0,0,0,.08),0 22px 44px -28px rgba(40,30,20,.45)}
+  .banner::before{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;opacity:.55;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .11 0 0 0 0 .1 0 0 0 0 .09 0 0 0 .11 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  .banner::after{content:"";position:absolute;inset:12px;border:1px solid rgba(29,28,26,.2);pointer-events:none;z-index:2}
+  .reg{position:absolute;width:20px;height:20px;z-index:3}
+  .reg.tl{top:2px;left:2px}.reg.tr{top:2px;right:2px}.reg.bl{bottom:2px;left:2px}.reg.br{bottom:2px;right:2px}
+
+  .copy{position:relative;z-index:2;display:flex;flex-direction:column;justify-content:space-between;gap:18px;
+    padding:clamp(30px,3.6vw,60px) 0 clamp(28px,3.4vw,54px) clamp(30px,4vw,68px)}
+  .meta{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;font:500 12px/1 var(--mono);letter-spacing:.06em}
+  .stamp{border:1.5px solid var(--coral);color:var(--coral-ink);padding:5px 8px;font-weight:700;letter-spacing:.12em}
+  .title{margin:0;font-weight:900;font-size:clamp(58px,7.3vw,124px);line-height:.84;letter-spacing:-.045em;text-transform:uppercase}
+  .title span{display:block}
+  .title .etched{color:var(--ink)}
+  @supports ((-webkit-background-clip:text) or (background-clip:text)) and (-webkit-text-stroke:1px black){
+    .title .etched{color:transparent;-webkit-text-stroke:1.6px var(--ink);
+      background:repeating-linear-gradient(-45deg,var(--ink) 0 1px,transparent 1px 5px);
+      -webkit-background-clip:text;background-clip:text}
+  }
+  .title .last::after{content:"";display:inline-block;width:.2em;height:.2em;background:var(--coral);margin-left:.07em}
+  .zh{margin:0;font-family:var(--zh);font-weight:700;font-size:clamp(20px,1.9vw,30px);line-height:1.38;letter-spacing:.03em}
+  .en{margin:8px 0 0;font:500 clamp(13px,1vw,16px)/1.4 var(--mono);color:var(--graph)}
+  .spec{margin:0;max-width:36em;border-top:1px solid rgba(29,28,26,.35);padding-top:10px;font:11px/1.55 var(--mono);color:var(--mute)}
+
+  .art{position:relative;z-index:1;min-width:0;display:flex;align-items:center;padding:clamp(10px,1.6vw,28px) clamp(14px,2vw,34px) clamp(10px,1.6vw,28px) 0}
+  .ap{display:block;width:100%;height:auto;max-height:100%}
+  .ap text{font-family:var(--mono);fill:var(--ink)}
+  .ap .fine{font-size:9px;fill:var(--mute);letter-spacing:.02em}
+  .ap .key{font-size:11px;font-weight:700;letter-spacing:.08em}
+  .ap .rt{font-size:7.6px}
+  .ap .rb{font-size:7.4px;font-weight:700;letter-spacing:.08em}
+  .ap .rh{font-size:14px;font-weight:700;letter-spacing:.06em}
+  .ap .ring{font-size:8px;letter-spacing:.2em;fill:var(--paper-2)}
+  #iris{transform-box:view-box;transform-origin:430px 250px}
+
+  /* ---------- outside the banner ---------- */
+  .cap{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;font:12px/1.3 var(--mono);color:var(--mute)}
+  .scan-btn{display:inline-flex;align-items:center;gap:10px;font:600 13px/1 var(--mono);letter-spacing:.04em;
+    padding:11px 16px;background:var(--ink);color:var(--paper-2);border:0;border-radius:0;cursor:pointer}
+  .scan-btn::before{content:"";width:8px;height:8px;background:var(--coral)}
+  .scan-btn:hover{background:var(--graph)}
+  .scan-btn:focus-visible{outline:3px solid var(--coral);outline-offset:3px}
+  .scan-btn[aria-disabled="true"]{opacity:.62;cursor:progress}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .still .scan-btn{display:none}
+
+  /* ---------- 390px recomposition ---------- */
+  @media (max-width:760px){
+    .banner{grid-template-columns:1fr;aspect-ratio:auto}
+    .copy{padding:30px 24px 6px;gap:16px}
+    .title{font-size:clamp(52px,17vw,78px)}
+    .spec{display:none}
+    .art{padding:4px 10px 26px}
+    .ap .fine,.ap .rt,.ap .rb,.ap .ring{display:none}
+    .ap .key{font-size:21px;letter-spacing:.02em}
+    .ap .rh{font-size:22px}
+  }
+</style>
+</head>
+<body>
+<figure class="board">
+  <div class="banner">
+    <svg class="reg tl" aria-hidden="true"><use href="#reg"/></svg>
+    <svg class="reg tr" aria-hidden="true"><use href="#reg"/></svg>
+    <svg class="reg bl" aria-hidden="true"><use href="#reg"/></svg>
+    <svg class="reg br" aria-hidden="true"><use href="#reg"/></svg>
+
+    <header class="copy">
+      <div class="meta"><span>cablate/ci-local-guard</span><span class="stamp">LOCAL FIRST</span></div>
+      <h1 class="title" aria-label="CI Local Guard"><span>CI</span><span class="etched">Local</span><span class="last">Guard</span></h1>
+      <div>
+        <p class="zh" lang="zh-Hant">先在本機看清楚，<br>再把程式推上去。</p>
+        <p class="en">Local CI checks for coding agents.</p>
+      </div>
+      <p class="spec">COMMIT → CHECKOUT → CHECKS → REPORT<br>Local preflight · GitHub Actions timing analysis</p>
+    </header>
+
+    <div class="art">
+      <svg class="ap" viewBox="0 0 820 560" role="img" aria-labelledby="art-t art-d">
+        <title id="art-t">Process illustration: a commit specimen passes through an inspection aperture and leaves a report</title>
+        <desc id="art-d">A repository stack yields one specific commit into a separate checkout. A feed rod carries the commit specimen along an optical rail into a large engraved iris aperture, where a coral scan line sweeps across it. At right a report sheet rises from a slot, listing project-owned checks, a log excerpt and relative GitHub Actions timing bars. Schematic only; it shows no real results.</desc>
+        <defs>
+          <symbol id="reg" viewBox="-12 -12 24 24"><circle r="6" fill="none" stroke="#1d1c1a"/><path d="M-12 0H12M0-12V12" stroke="#1d1c1a"/><circle r="2.2" fill="#1d1c1a"/></symbol>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1d1c1a" stroke-opacity=".07" stroke-width=".6"/></pattern>
+          <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line y2="6" stroke="#1d1c1a" stroke-width=".7"/></pattern>
+          <pattern id="hatchP" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><line y2="5" stroke="#faf7f0" stroke-opacity=".35" stroke-width=".6"/></pattern>
+          <clipPath id="open"><circle cx="430" cy="250" r="88"/></clipPath>
+          <clipPath id="slotclip"><rect x="590" y="0" width="230" height="432"/></clipPath>
+          <path id="ringpath" d="M430 250m-180 0a180 180 0 1 1 360 0a180 180 0 1 1-360 0"/>
+        </defs>
+
+        <rect width="820" height="560" fill="url(#grid)"/>
+
+        <!-- cut / etched planes -->
+        <path d="M250 118L560 100L578 470L238 480Z" fill="url(#hatch)" opacity=".38"/>
+        <path d="M330 70L646 86L612 438L300 420Z" fill="#ff5a36"/>
+        <path d="M330 70L646 86L612 438L300 420Z" fill="url(#hatchP)"/>
+
+        <!-- separate checkout brackets -->
+        <g fill="none" stroke="#1d1c1a" stroke-width="1.2">
+          <path d="M210 62V46H230M590 46H608V62M608 432V450H590M230 450H210V432"/>
+        </g>
+        <text class="fine" x="218" y="40">SEPARATE CHECKOUT · working tree untouched</text>
+
+        <!-- repository stack -->
+        <text class="fine" x="40" y="54">REPOSITORY</text>
+        <g stroke="#1d1c1a" stroke-width="1">
+          <rect x="40" y="64" width="150" height="86" fill="#e8e2d5"/>
+          <rect x="50" y="74" width="150" height="86" fill="#f0ebe0"/>
+          <rect x="60" y="84" width="150" height="86" fill="#faf7f0"/>
+        </g>
+        <text x="72" y="104" style="font-size:9px;font-weight:700">main · HEAD</text>
+        <g fill="#3b3934"><rect x="72" y="116" width="78" height="3"/><rect x="72" y="126" width="56" height="3"/><rect x="72" y="136" width="92" height="3"/><rect x="72" y="146" width="40" height="3"/></g>
+        <g stroke="#1d1c1a" stroke-width="1.2" fill="#faf7f0">
+          <path d="M184 100V152M184 118C184 128 196 128 196 138" fill="none"/>
+          <circle cx="184" cy="100" r="3.4"/><circle cx="184" cy="152" r="3.4"/><circle cx="196" cy="138" r="3.4" fill="#ff5a36"/>
+        </g>
+        <path d="M150 172C150 228 180 250 222 250" fill="none" stroke="#1d1c1a" stroke-width="1" stroke-dasharray="3 3"/>
+        <path d="M216 246L224 250L216 254" fill="none" stroke="#1d1c1a"/>
+        <text class="fine" x="30" y="206">isolate · inspect</text>
+        <text class="fine" x="30" y="218">one specific commit</text>
+
+        <!-- optical rail -->
+        <rect x="20" y="462" width="780" height="10" fill="#1d1c1a"/>
+        <rect x="20" y="472" width="780" height="2" fill="#1d1c1a" opacity=".25"/>
+        <g id="railTicks" stroke="#1d1c1a" stroke-width=".8"></g>
+
+        <!-- stand -->
+        <path d="M412 396H448L462 452H398Z" fill="#3b3934"/>
+        <path d="M412 396H448L462 452H398Z" fill="url(#hatchP)"/>
+        <rect x="384" y="452" width="92" height="10" fill="#1d1c1a"/>
+
+        <!-- lens body + iris -->
+        <circle cx="430" cy="250" r="150" fill="#24221f"/>
+        <circle cx="430" cy="250" r="143" fill="none" stroke="#faf7f0" stroke-opacity=".22"/>
+        <g id="iris"></g>
+        <circle cx="430" cy="250" r="88" fill="#fbf9f3" stroke="#1d1c1a" stroke-width="1.2"/>
+        <g fill="none" stroke="#1d1c1a" stroke-opacity=".16">
+          <circle cx="430" cy="250" r="62"/><circle cx="430" cy="250" r="34"/>
+        </g>
+
+        <!-- carriage: holder, feed rod, commit specimen -->
+        <g id="carriage">
+          <rect x="214" y="444" width="44" height="18" fill="#1d1c1a"/>
+          <rect x="232" y="258" width="8" height="186" fill="#3b3934"/>
+          <line x1="236" y1="250" x2="362" y2="250" stroke="#1d1c1a" stroke-width="3"/>
+          <circle cx="236" cy="250" r="9" fill="#faf7f0" stroke="#1d1c1a" stroke-width="1.4"/>
+          <circle cx="236" cy="250" r="2.4" fill="#1d1c1a"/>
+          <g>
+            <rect x="360" y="202" width="140" height="96" fill="#fffdf8" stroke="#1d1c1a" stroke-width="1.3"/>
+            <rect x="360" y="202" width="140" height="16" fill="#1d1c1a"/>
+            <text x="366" y="213.5" style="font-size:8.5px;font-weight:700;fill:#faf7f0;letter-spacing:.06em">SELECTED COMMIT</text>
+            <g style="font-size:9px;font-weight:700">
+              <text x="366" y="230" style="fill:#b93518">+</text><text x="366" y="252" style="fill:#1d1c1a">−</text>
+              <text x="366" y="263" style="fill:#b93518">+</text><text x="366" y="285" style="fill:#b93518">+</text>
+            </g>
+            <g>
+              <rect x="378" y="226" width="80" height="4" fill="#ff5a36"/>
+              <rect x="378" y="237" width="104" height="4" fill="#3b3934"/>
+              <rect x="378" y="248" width="62" height="4" fill="#1d1c1a"/>
+              <rect x="378" y="259" width="96" height="4" fill="#ff5a36"/>
+              <rect x="378" y="270" width="50" height="4" fill="#3b3934"/>
+              <rect x="378" y="281" width="74" height="4" fill="#ff5a36"/>
+            </g>
+            <path d="M492 290h8M500 290v8" stroke="#1d1c1a"/>
+          </g>
+        </g>
+
+        <!-- scan line, clipped to the aperture -->
+        <g clip-path="url(#open)">
+          <g id="scan">
+            <rect x="416" y="160" width="28" height="180" fill="#ff5a36" opacity=".14"/>
+            <rect x="429" y="160" width="2" height="180" fill="#ff5a36"/>
+          </g>
+        </g>
+        <path d="M430 166V180M430 320V334M346 250H360M500 250H514" stroke="#ff5a36" stroke-width="1.4"/>
+
+        <!-- front bezel -->
+        <circle cx="430" cy="250" r="150" fill="none" stroke="#1d1c1a" stroke-width="3"/>
+        <circle cx="430" cy="250" r="160" fill="none" stroke="#1d1c1a" stroke-width=".9"/>
+        <g id="ticks" stroke="#1d1c1a" stroke-width=".9"></g>
+        <text class="ring" style="fill:#1d1c1a"><textPath href="#ringpath" startOffset="4%">SPECIFIC COMMIT · PROJECT-OWNED CHECKS</textPath></text>
+        <g fill="#faf7f0" stroke="#1d1c1a">
+          <circle cx="324" cy="144" r="4"/><circle cx="536" cy="144" r="4"/><circle cx="324" cy="356" r="4"/><circle cx="536" cy="356" r="4"/>
+        </g>
+
+        <!-- beam toward report -->
+        <g id="beam">
+          <path d="M520 238L620 160V340L520 262Z" fill="#ff5a36" opacity=".16"/>
+          <g stroke="#1d1c1a" stroke-width=".9" fill="none">
+            <path d="M520 238L620 160M520 262L620 340"/>
+            <path d="M520 250H620" stroke-dasharray="4 3"/>
+          </g>
+        </g>
+
+        <!-- report rising from slot -->
+        <g clip-path="url(#slotclip)">
+          <g id="report">
+            <g transform="rotate(-2 709 265)">
+              <rect x="618" y="92" width="182" height="360" fill="#faf7f0" stroke="#1d1c1a" stroke-width="1.2"/>
+              <rect x="618" y="92" width="5" height="360" fill="#ff5a36"/>
+              <text class="rh" x="632" y="118">REPORT</text>
+              <text class="rt" x="788" y="117" text-anchor="end" style="fill:#b93518;font-weight:700">LOCAL GUARD</text>
+              <text class="rt" x="632" y="130" style="fill:#6c675d">a closer look at your code</text>
+              <line x1="632" y1="138" x2="788" y2="138" stroke="#1d1c1a"/>
+              <g class="row"><text class="rt" x="632" y="152">selected commit / inspection notes</text></g>
+              <g class="row"><text class="rb" x="632" y="174">01  PROJECT-OWNED CHECKS</text></g>
+              <g class="row">
+                <rect x="632" y="182" width="7" height="7" fill="#ff5a36"/><rect x="632" y="196" width="7" height="7" fill="#ff5a36"/><rect x="632" y="210" width="7" height="7" fill="#ff5a36"/>
+                <text class="rt" x="645" y="189">check · lint</text><text class="rt" x="645" y="203">check · tests</text><text class="rt" x="645" y="217">check · build</text>
+                <path d="M712 187H762M712 201H762M712 215H762" stroke="#1d1c1a" stroke-dasharray="1 2.5"/>
+                <text class="rt" x="788" y="189" text-anchor="end">→ log</text><text class="rt" x="788" y="203" text-anchor="end">→ log</text><text class="rt" x="788" y="217" text-anchor="end">→ log</text>
+              </g>
+              <g class="row"><text class="rb" x="632" y="242">02  LOG EXCERPT</text></g>
+              <g class="row">
+                <rect x="632" y="250" width="156" height="46" fill="#e9e3d6"/>
+                <rect x="640" y="257" width="120" height="3" fill="#3b3934"/><rect x="640" y="267" width="92" height="3" fill="#3b3934"/>
+                <rect x="640" y="277" width="134" height="3" fill="#ff5a36"/><rect x="640" y="287" width="70" height="3" fill="#3b3934"/>
+              </g>
+              <g class="row"><text class="rb" x="632" y="316">03  ACTIONS TIMING</text></g>
+              <g class="row">
+                <rect x="640" y="324" width="110" height="6" fill="#1d1c1a"/><rect x="652" y="334" width="64" height="6" fill="#1d1c1a"/>
+                <rect x="668" y="344" width="98" height="6" fill="#ff5a36"/><rect x="700" y="354" width="40" height="6" fill="#1d1c1a"/>
+                <path d="M640 366H788M640 366v-3M677 366v-3M714 366v-3M751 366v-3M788 366v-3" stroke="#1d1c1a" stroke-width=".8"/>
+                <text class="rt" x="632" y="380" style="fill:#6c675d">relative · illustrative</text>
+              </g>
+              <g class="row">
+                <line x1="632" y1="392" x2="788" y2="392" stroke="#1d1c1a"/>
+                <text class="rt" x="632" y="406">CHECKS · LOGS · TIMINGS</text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <rect x="600" y="432" width="210" height="30" fill="#1d1c1a"/>
+        <rect x="612" y="438" width="186" height="2" fill="#faf7f0" opacity=".5"/>
+        <text class="fine" x="612" y="454" style="fill:#faf7f0">REPORT OUT</text>
+
+        <!-- annotations -->
+        <path d="M543 137L596 82H700" fill="none" stroke="#1d1c1a" stroke-width=".8"/>
+        <circle cx="543" cy="137" r="2" fill="#1d1c1a"/>
+        <text class="fine" x="600" y="77">Ø inspection aperture</text>
+
+        <g>
+          <text class="key" x="40" y="496">01 COMMIT</text>
+          <text class="key" x="214" y="496">02 CHECKOUT</text>
+          <text class="key" x="400" y="496">03 APERTURE</text>
+          <text class="key" x="640" y="496">04 REPORT</text>
+          <text class="fine" x="40" y="511">a specific SHA</text>
+          <text class="fine" x="214" y="511">separate worktree</text>
+          <text class="fine" x="400" y="511">project-owned checks</text>
+          <text class="fine" x="640" y="511">results · log excerpts</text>
+        </g>
+        <g stroke="#1d1c1a" stroke-width=".8">
+          <rect x="20" y="532" width="12" height="12" fill="#1d1c1a"/><rect x="36" y="532" width="12" height="12" fill="#3b3934"/>
+          <rect x="52" y="532" width="12" height="12" fill="#ff5a36"/><rect x="68" y="532" width="12" height="12" fill="#f1ece1"/>
+        </g>
+        <text class="fine" x="800" y="542" text-anchor="end">FIG. 01 — PROCESS ILLUSTRATION</text>
+      </svg>
+    </div>
+  </div>
+
+  <figcaption class="cap">
+    <span>Banner concept · HTML / CSS / JS</span>
+    <button class="scan-btn" type="button" id="scanBtn" aria-disabled="false"><span id="scanLabel">Run the scan</span></button>
+    <span class="sr" id="scanStatus" aria-live="polite"></span>
+  </figcaption>
+</figure>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const add = (parent, tag, attrs) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    parent.appendChild(n);
+    return n;
+  };
+  const CX = 430, CY = 250;
+
+  // Bezel graduations
+  for (let a = 0; a < 360; a += 5) {
+    const r = (a * Math.PI) / 180, long = a % 30 === 0, r2 = long ? 174 : 166;
+    add($("ticks"), "line", {
+      x1: CX + 160 * Math.cos(r), y1: CY + 160 * Math.sin(r),
+      x2: CX + r2 * Math.cos(r), y2: CY + r2 * Math.sin(r),
+      "stroke-width": long ? 1.4 : 0.8
+    });
+  }
+
+  // Rail scale
+  for (let x = 20; x <= 800; x += 10) {
+    const h = (x - 20) % 100 === 0 ? 9 : (x - 20) % 50 === 0 ? 6 : 3;
+    add($("railTicks"), "line", { x1: x, y1: 462 - h, x2: x, y2: 462 });
+  }
+
+  // Iris blades: inner arc 0°→45°, outer arc 60°→15°
+  const blade = "M518 250A88 88 0 0 1 492.2 312.2L499 369.5A138 138 0 0 0 563.3 285.7Z";
+  for (let i = 0; i < 8; i++) {
+    add($("iris"), "path", {
+      d: blade, transform: `rotate(${i * 45} ${CX} ${CY})`,
+      fill: i % 2 ? "#d8d1c1" : "#e7e1d3", stroke: "#1d1c1a", "stroke-width": 0.8
+    });
+  }
+
+  const still = new URLSearchParams(location.search).get("still") === "1";
+  if (still) { document.documentElement.classList.add("still"); return; }
+
+  const btn = $("scanBtn"), label = $("scanLabel"), status = $("scanStatus");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  let running = false;
+  let activeAnimations = [];
+
+  const done = (msg) => {
+    running = false;
+    activeAnimations = [];
+    btn.setAttribute("aria-disabled", "false");
+    label.textContent = "Replay scan";
+    status.textContent = msg;
+  };
+
+  reduce.addEventListener("change", () => {
+    if (reduce.matches) activeAnimations.forEach(animation => animation.cancel());
+  });
+
+  btn.addEventListener("click", () => {
+    if (running) return;
+    if (reduce.matches || !Element.prototype.animate) {
+      done("Reduced motion: showing the completed static inspection. Illustration only, no live result.");
+      return;
+    }
+    running = true;
+    btn.setAttribute("aria-disabled", "true");
+    status.textContent = "Inspection sweep running.";
+
+    const opt = { duration: 3800 };
+    const ease = "cubic-bezier(.55,0,.2,1)";
+    const anims = [
+      $("carriage").animate([
+        { transform: "translateX(-210px)" },
+        { transform: "translateX(-210px)", offset: .06, easing: ease },
+        { transform: "translateX(0)", offset: .4 },
+        { transform: "translateX(0)" }
+      ], opt),
+      $("iris").animate([
+        { transform: "rotate(-12deg)" },
+        { transform: "rotate(-12deg)", offset: .3, easing: "cubic-bezier(.3,0,.2,1)" },
+        { transform: "rotate(0deg)", offset: .46 },
+        { transform: "rotate(0deg)" }
+      ], opt),
+      $("scan").animate([
+        { transform: "translateX(-80px)", opacity: 0 },
+        { transform: "translateX(-80px)", opacity: 0, offset: .44 },
+        { transform: "translateX(-78px)", opacity: 1, offset: .47, easing: "cubic-bezier(.4,0,.2,1)" },
+        { transform: "translateX(80px)", opacity: 1, offset: .68, easing: ease },
+        { transform: "translateX(0)", opacity: 1, offset: .78 },
+        { transform: "translateX(0)", opacity: 1 }
+      ], opt),
+      $("beam").animate([
+        { opacity: 0 }, { opacity: 0, offset: .5 }, { opacity: 1, offset: .6 }, { opacity: 1 }
+      ], opt),
+      $("report").animate([
+        { transform: "translateY(340px)" },
+        { transform: "translateY(340px)", offset: .55, easing: "cubic-bezier(.2,.7,.2,1)" },
+        { transform: "translateY(0)", offset: .85 },
+        { transform: "translateY(0)" }
+      ], opt),
+      ...[...document.querySelectorAll("#report .row")].map((row, i) => row.animate([
+        { opacity: 0 },
+        { opacity: 0, offset: .62 + i * .034 },
+        { opacity: 1, offset: .66 + i * .034 },
+        { opacity: 1 }
+      ], opt))
+    ];
+    activeAnimations = anims;
+    Promise.all(anims.map((a) => a.finished)).then(
+      () => done("Inspection sweep complete. Illustration only, no live result."),
+      () => done(reduce.matches ? "Reduced motion: showing the static inspection." : "")
+    );
+  });
+})();
+</script>
+</body>
+</html>

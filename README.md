@@ -1,6 +1,8 @@
 # CI Local Guard
 [繁體中文](README.zh-TW.md)
 
+![CI Local Guard — a commit passes through an optical inspection bench and becomes a check report.](assets/banner/banner.webp)
+
 **Give your coding AI a way to check its work before pushing—and investigate slow CI afterward.**
 
 Your AI finishes a change, pushes it, and then CI catches a failing test. You send the logs back, the AI fixes something, and you wait again.

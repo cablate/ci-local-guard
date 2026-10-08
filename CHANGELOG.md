@@ -6,6 +6,7 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 ## [Unreleased]
 
 ### Changed
+- Added the inspection-bench banner to both READMEs. Its static image ships with the CLI archive; the editable HTML/JS artwork stays in the repository.
 - Rewrote the guides around everyday tasks: setup, reading results, investigating failures and maintaining an installation. Update and uninstall commands now have separate examples.
 - Simplified the AI, contributor and security-reporting instructions, fixed their navigation, and added heading-link checks across all Markdown guides. Command behavior and data formats are unchanged.
 - Edited earlier changelog entries for readability while keeping their version dates and recorded changes.

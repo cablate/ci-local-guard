@@ -77,6 +77,7 @@ Everything tracked in this public repository is public, including agent instruct
 | skills/ci/SKILL.md | Claude users operating Guard on their projects | Plugin |
 | .github/SECURITY.md | Anyone reporting a security concern | Repository and GitHub Security tab |
 | LICENSE | Everyone using or distributing the code | Repository and CLI archive |
+| assets/banner/ | README artwork; index.html is its editable, interactive source and banner.webp is the static export | WebP in repository and CLI archive; HTML in repository only |
 
 Keep work diaries, internal TODO checklists, raw test/run logs, scan details, personal paths and private project examples out of tracked files and release attachments. Put temporary evidence outside the tracked tree. Share only the relevant, reviewed conclusion in the appropriate public guide or changelog. README holds a short current status and next priority, not an execution history.
 

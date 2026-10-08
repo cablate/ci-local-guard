@@ -1,6 +1,8 @@
 # CI Local Guard
 [English](README.md)
 
+![CI Local Guard：commit 穿過光學檢測台，輸出檢查報告。](assets/banner/banner.webp)
+
 **讓寫程式的 AI 在 push 前先檢查一次，也幫你找出 CI 到底慢在哪裡。**
 
 AI 改完程式、推上去，CI 才告訴你測試沒過。你把日誌貼回去，AI 再改一次，然後又等一輪。
