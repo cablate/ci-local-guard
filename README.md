@@ -2,7 +2,7 @@
 status: public-experimental
 as_of: 2026-10-08
 owner: CI Local Guard maintainers
-next_action: 以 GitHub Release 與 Claude marketplace 分發；維持版本同步與跨平台驗證，不使用 npm registry 發布。
+next_action: 完成下方 TODO+ 公開採用驗收；先收斂雙語入口與文件契約，再做隔離 consumer 驗證及 experimental patch 交付。
 ---
 
 # CI Local Guard
@@ -34,6 +34,21 @@ CI Local Guard is an experimental, MIT-licensed CLI for development agents and h
 Use Node >=22.13.0 <23 and Git. Install the Claude marketplace from cablate/ci-local-guard, or clone an exact GitHub release tag and run `node cli.mjs --help`. No npm account or registry package is needed. The offline demo below requires no login or project configuration: it reports 60 seconds of execution wall time versus 80 job-seconds, with `savings: null`. User guidance is primarily Traditional Chinese; CLI help, JSON fields and [contributor guidance](CONTRIBUTING.md) are English.
 
 ## 安裝
+
+### TODO+：公開採用交付狀態
+
+基準為已發布的 v0.1.0；目前階段是盤點完成、文件與採用流程整理中。目標是外部 AI 僅拿到 repo URL，就能找到正確流程、執行可信檢查並說清未驗證邊界；不承諾所有模型自動選用或零風險。此表是本輪唯一進度 owner，原始測試輸出留在開發 checkout 的 Git directory，不當成公共範例。
+
+| 工作包 | 驗收與狀態 | 下一步／停止邊界 |
+|---|---|---|
+| 1 公開風險盤點 | 已完成本機盤點：39 個 tracked files 靜態審查找到 1 個 Low plan 診斷洩露問題；20 個可達 commits／104 個 blobs 的 15 組疑似 secret 均核對為假資料；作者 Email 已接受公開 | 修補後重驗；歷史是樣式掃描＋候選核對，不宣稱零秘密；發布前核對最終 package 與遠端資產 |
+| 2 AI 採用與雙語入口 | 待做：README 仍以繁中為主、上手與契約混雜 | 英文正本＋繁中、短 AI 接入指引；保留 PRINCIPLE 與現有契約，不另建規則引擎 |
+| 3 文件與版本同步 | 待做：版號同步已有；雙語結構與 release notes 格式尚需收斂 | 補同步檢查、更新／移除／排錯／安全回報；不恢復 npm 發布 |
+| 4 陌生採用驗收 | 待做：舊 fresh-session 與安裝測試不能代替本輪 | 無舊對話採用或等效隔離 consumer，涵蓋缺配置、失敗、dirty／exact SHA、CI 分析；不得把靜態檢查當成 AI 行為證據 |
+| 5 修補與回歸 | 本機修補已驗：plan 假資料洩露先重現，再驗三條 caller × 兩個 stream；獨立 patch review 無具體問題，Windows 全套 116 tests／115 pass／1 既有 POSIX skip | 雙語與接入完成後再跑最終 focused＋全套＋Hosted Windows／Linux；尚未發布此修補 |
+| 6 發布與收尾 | 待做：保留 v0.1.0 不動 | 通過後提交、合併 main、發新 experimental patch，驗 GitHub 安裝／更新／移除與 archive；需要新帳號／權限只列阻礙，不繞過 |
+
+刻意不納入：MCP、自動 hooks、自動修復／重試、IE 專用邏輯、部署、花費節省保證、為提高 audit 分數而新增無用樣板或品牌素材。安全審查與功能／採用證據分開報告；有未知項不得宣稱全部完成。
 
 ### CLI 與 Claude plugin：同一份核心
 
@@ -316,7 +331,7 @@ JSON 可含本機絕對路徑；日誌可含產品輸出。分享前檢查與遮
 | audit-runs | 離線列耗時集中、失敗／取消與 same-SHA 多 run；耗時大不等於浪費，多觸發不等於重複保護。 |
 | compare-runs | before／after 的獨立 samples 與 profile 對照；僅描述性差值，不宣稱可歸因節省或帳單省額。 |
 
-共 12 個命令。沒有舊 check 入口、專案命名腳本猜測、origin/dev 預設、外部 model checkout、Classroom／Staging 預覽或 PASS cache。沒有配置時不 fallback；generic 專案缺明確 push 契約時不支援 pre-push 放行。
+共 13 個命令。沒有舊 check 入口、專案命名腳本猜測、origin/dev 預設、外部 model checkout、Classroom／Staging 預覽或 PASS cache。沒有配置時不 fallback；generic 專案缺明確 push 契約時不支援 pre-push 放行。
 
 ## 專案契約：規則由專案擁有
 
@@ -389,7 +404,7 @@ ci-local-guard uninstall-hook --repo <project>
 ## 證據、安全與 Agent 使用
 
 - 預檢 exit 0：產品執行成功但可能覆蓋不完整；exit 1：執行／契約失敗；exit 2：unavailable／incomplete obligations／needs-review。不要只看 exit 0 或空 failedChecks 判定全部 CI 完成。
-- --json 的 stdout 是一份 report；child output 留日誌，diagnostics 在 stderr。操作與判讀順序見「AI 操作入口」。
+- --json 的 stdout 是一份 report；preflight child output 留日誌，diagnostics 在 stderr。plan 失敗的原始輸出不保留、不回印，改由專案 owner 在本機檢查 adapter。操作與判讀順序見「AI 操作入口」。
 - checkoutObservation 是工具採樣的前後 HEAD／tree／tracked dirty state；drift 拒絕成功。它不涵蓋短暫改動後還原、untracked／ignored、mutable dependencies 或 Hosted provenance。
 - 每次 fresh 執行；舊 cache／環境 opt-in 不可跳過新失敗。正常結束清理隔離 checkout、保留必要 logs；中斷／取消不能一概保證清理。
 - executionFailure 區分啟動、child exit／signal、日誌、receipt、後驗證；同時失敗全部保留，不從 log 文字推斷根因。不要自動重試到綠。
@@ -426,13 +441,13 @@ ci-local-guard compare-runs --input comparison.json
 
 ## 驗證、限制與發布狀態
 
-MIT；GitHub 已公開。Windows／Ubuntu 的 [GitHub CI](https://github.com/cablate/ci-local-guard/actions) 執行完整測試（最新結果與數量以連結為準），包含離線安裝／移除、Git hook、exact checkout、receipt、遮罩與失敗阻擋。workflow 使用 SHA-pinned actions、唯讀 token、不保留 checkout 認證。macOS／arm64 尚未驗證。
+MIT；GitHub 已公開。Windows／Ubuntu 的 [GitHub CI](https://github.com/cablate/ci-local-guard/actions) 執行完整測試（最新結果與數量以連結為準），包含離線安裝／移除、Git hook、exact checkout、receipt、遮罩與失敗阻擋。workflow 使用 SHA-pinned actions、不保留 checkout 認證；一般測試 token 唯讀，只有 tag 發布 job 取得 contents:write 以建立 GitHub Release。macOS／arm64 尚未驗證。
 
-公開前 22 個候選檔案的靜態安全審查沒有可報告漏洞；不包含 Git 歷史、遠端權限或動態 exploit 驗證，不是安全保證。其後修正了 Hosted 發現的日誌交錯與 Windows 路徑測試，並新增回歸測試。工具不是 sandbox，adapter 與 actionlint cache 必須可信；遮罩只是 best effort，日誌不保證 stdout／stderr 的全域時間順序。
+本輪對 v0.1.0 的 39 個 tracked files 完成獨立基準、架構與針對性靜態審查，找到 1 個 Low：plan adapter 失敗時原始輸出可能帶出敏感值。尚未發布的修補已移除這段回印；驗證狀態見 TODO+。靜態審查不包含 Git 歷史、遠端權限或動態 exploit 保證；另行歷史候選核對也不保證零秘密。工具不是 sandbox，adapter 與 actionlint cache 必須可信；遮罩只是 best effort，日誌不保證 stdout／stderr 的全域時間順序。
 
 敏感漏洞請用 [GitHub 私下漏洞回報](https://github.com/cablate/ci-local-guard/security/advisories/new)，非敏感問題用 [Issues](https://github.com/cablate/ci-local-guard/issues)。不要公開私人路徑、token 或原始日誌。
 
-沒有 tag、Release 或 npm 發布；package.json 的 private:true 僅阻止 registry 發布。CI 節省與陌生 AI 採用成效仍未證明。下一步以真實使用回饋改善工具，不新增專案耦合或自動放行。
+已發布 [v0.1.0 experimental](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0)，附 CLI tarball 與 SHA256SUMS；已核對下載校驗碼並啟動 CLI。遠端 Claude marketplace 的隔離安裝、同版本更新檢查與移除均已通過；尚未驗證跨版本升級。沒有 npm registry 發布，package.json 的 private:true 防止誤發布。CI 節省與陌生 AI 自主接入仍未完整證明；不新增專案耦合或自動放行。
 
 ## 如何分享與回報採用經驗
 

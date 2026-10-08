@@ -1,6 +1,11 @@
 # Changelog
 [繁體中文](CHANGELOG.zh-TW.md)
 
+## [Unreleased]
+
+### Security
+- Failed plan adapters no longer echo raw stdout/stderr into terminal or agent diagnostics. Exit status and failed/blocked reports remain unchanged; inspect the project-owned adapter locally. This is not comprehensive secret redaction or a sandbox.
+
 ## 0.1.0 — experimental
 
 Install from GitHub without an npm account. This first experimental release gives agents exact-commit checks, bounded failure evidence and a thin Claude entrypoint. package.json owns the version. Local success is not a complete Hosted CI verdict.

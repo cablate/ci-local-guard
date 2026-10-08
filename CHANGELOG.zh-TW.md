@@ -1,6 +1,11 @@
 # 版本紀錄
 [English](CHANGELOG.md)
 
+## [未發布]
+
+### 安全性
+- plan adapter 失敗時不再把原始 stdout/stderr 帶入終端或 Agent 診斷。退出狀態與 failed/blocked 報告不變；請在本機檢查專案擁有的 adapter。這不是全面秘密遮罩或 sandbox。
+
 ## 0.1.0 — experimental
 
 不需要 npm 帳號，直接從 GitHub 安裝。首個實驗版提供 Agent exact-commit 檢查、有界失敗證據與 Claude 薄入口。package.json 擁有版號；本機成功不代表完整 Hosted CI 通過。

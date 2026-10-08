@@ -396,7 +396,8 @@ export function simulator(repo, { base, head, event = 'pull_request', worktree =
   });
   if (result.error) throw result.error;
   if (![0, 2].includes(result.status)) {
-    throw new Error(`Project CI simulator failed (${result.status}): ${String(result.stderr || result.stdout).trim()}`);
+    // Plan output is not retained evidence; never copy it into agent diagnostics.
+    throw new Error(`Project CI simulator failed (${result.status}); adapter output suppressed. Inspect the project-owned plan adapter locally.`);
   }
   let plan;
   try {

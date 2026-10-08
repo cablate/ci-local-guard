@@ -492,6 +492,41 @@ test('plan exact head uses committed rules rather than dirty simulator and provi
   } finally { rmSync(fixture.root, { recursive: true, force: true }); }
 });
 
+test('failed plan output stays out of diagnostics for every plan caller and output stream', () => {
+  const fixture = fixtureRepo();
+  try {
+    const candidate = seedPreflightFixture(fixture);
+    const control = invoke(fixture, candidate, 'plan', { args: ['--head', candidate.head, '--json'] });
+    assert.equal(control.status, 0, control.stderr);
+    assert.equal(JSON.parse(control.stdout).outcome, 'predicted');
+    writeFileSync(path.join(fixture.root, 'quality/plan.mjs'), `
+      process[process.env.GUARD_TEST_STREAM].write(process.env.GUARD_TEST_SECRET);
+      process.exitCode = 1;
+    `);
+    fixture.git('add', 'quality/plan.mjs');
+    fixture.git('commit', '-qm', 'failing plan fixture');
+    candidate.head = fixture.git('rev-parse', 'HEAD').trim();
+    for (const stream of ['stderr', 'stdout']) {
+      for (const verb of ['plan', 'preflight', 'pre-push']) {
+        const result = invoke(fixture, candidate, verb, {
+          args: ['--json', ...(verb === 'pre-push' ? [] : ['--head', candidate.head]),
+            ...(verb === 'preflight' ? ['--with-plan'] : [])],
+          input: verb === 'pre-push' ? pushInput(candidate) : undefined,
+          env: { GUARD_TEST_STREAM: stream, GUARD_TEST_SECRET: 'synthetic-plan-private-sentinel' },
+        });
+        assert.equal(result.status, 1, result.stderr);
+        assert.doesNotMatch(result.stdout + result.stderr, /synthetic-plan-private-sentinel/);
+        assert.match(result.stderr, /Project CI simulator failed \(1\)/);
+        const report = JSON.parse(result.stdout);
+        assert.equal(report.outcome, verb === 'pre-push' ? 'blocked' : 'failed');
+        if (verb === 'plan') assert.equal(report.prediction, null);
+        assert.equal(existsSync(candidate.marker), false, 'plan failure must prevent product execution');
+        assert.equal(fixture.git('worktree', 'list', '--porcelain').match(/^worktree /gm).length, 1);
+      }
+    }
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
 test('plan JSON distinguishes review, unchanged input and invalid or contradictory identities', () => {
   const fixture = fixtureRepo();
   try {
