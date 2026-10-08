@@ -30,10 +30,10 @@ test('reference diagnostic JSON examples obey the public contracts and do not as
 
 });
 
-test('public README offline demo works through the CLI without provider access', () => {
-  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+test('public reference offline demo works through the CLI without provider access', () => {
+  const readme = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
   const script = readme.match(/node --input-type=module -e "([^"\r\n]*writeFileSync\('demo-runs\.json'[^"\r\n]*)"/)?.[1];
-  assert.ok(script, 'README must contain the copyable non-empty demo');
+  assert.ok(script, 'reference must contain the copyable non-empty demo');
   assert.doesNotMatch(readme, /尚未公開|有 private repo 存取權者|私下漏洞回報管道尚未確認/);
   const root = mkdtempSync(path.join(os.tmpdir(), 'guard-readme-demo-'));
   const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url));

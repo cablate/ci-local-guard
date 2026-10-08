@@ -1,66 +1,118 @@
 # Contributing
 
-This open-source, experimental CLI is intended for development agents and their human reviewers. Public guidance uses English with matching Traditional Chinese translations; code identifiers, tests and commit messages use English.
+Thanks for helping improve CI Local Guard. Small fixes, clearer examples and reports of real setup problems are all useful.
 
-## Develop and test
+## Run it locally
 
-Use Node >=22.13.0 <23, its bundled npm, and Git. No npm runtime dependencies or installation step are required. From the repository root:
+Use Node 22 (>=22.13.0 <23), its bundled npm, and Git. There are no npm runtime dependencies to install. From the repository root:
 
 ```sh
-node --test tests/*.test.mjs
+npm test
 ```
 
-Tests use temporary Git repositories, synthetic receipts and mocked provider responses. They do not need GitHub authentication, private applications, a database or a hosted CI run. The package test runs npm pack/install offline; npm must be available alongside Node or on PATH. On Windows, Git for Windows supplies the shell used by hook integration tests.
+Tests create temporary repositories and use sample data. You do not need a GitHub login, private application or database. Package tests also use npm to pack and install the CLI offline. On Windows, install Git for Windows so hook tests have a shell.
 
-Start with a focused test file. Run the full suite for changes to execution, identity, receipts or push gating. Do not weaken assertions or required checks to obtain a green result.
+For a small change, start with the relevant file:
 
-## Code map
+```sh
+node --test tests/project.test.mjs
+```
 
-- cli.mjs: command routing, orchestration, local hooks and reports.
-- src/project.mjs: project contracts, identity and owner/check validation.
-- src/checkout.mjs: temporary exact checkout and sampled tracked-state observation.
-- src/run-log.mjs: bounded execution, receipts, logs and failure evidence.
-- src/ci-runs.mjs: read-only GitHub collection and offline diagnostics.
-- src/actionlint.mjs: pinned actionlint download and verification for doctor only.
-- tests/: unit and isolated integration cases, including an installed consumer.
+Run the full suite when changing execution, commit identity, result validation or push checks. Keep existing assertions; if a test fails, investigate the cause before changing what it requires.
 
-Keep application scripts and classification rules in the consuming application. Do not add project-name exceptions, external model fallback, undeclared network access or unproven success caching. Prefer a small coherent patch over a new framework. Existing style: ES modules, two spaces, semicolons, no build step. No separate formatter/linter is enforced yet.
+## Find the code
 
-## Public interfaces and changes
+| File | What it handles |
+|---|---|
+| cli.mjs | Commands, reports and local Git hooks |
+| src/project.mjs | Project configuration, plans and check-result validation |
+| src/checkout.mjs | Temporary checkouts and before/after Git-state checks |
+| src/run-log.mjs | Execution deadlines, logs, receipts and failure details |
+| src/ci-runs.mjs | GitHub run collection and timing analysis |
+| src/actionlint.mjs | The actionlint download and version/hash checks used by doctor |
+| tests/ | Unit tests and isolated integrations, including an installed consumer |
 
-CLI verbs/options, descriptor/plan/receipt/report schemas and documented environment variables are consumer interfaces. Source-module exports are implementation details, not a stable library API. Update README and CHANGELOG when behavior changes. Tests must cover valid use and the affected failure boundary; a local PASS does not certify Hosted CI or complete protection.
+Use ES modules, two-space indentation and semicolons. There is no build step or enforced formatter yet. Keep a patch focused on the problem it solves.
 
-## Issues and sensitive reports
+Project-specific test scripts and selection rules belong in the project using Guard. Avoid project-name exceptions, fallback rules from another checkout, undeclared network access or caches that skip checks without proving equivalent inputs.
 
-Use this repository's Issues for non-sensitive bugs. Include the package version, Node/Git versions, OS, reproduction, exit code and sanitized report. Remove private paths, tokens and raw logs. Use [GitHub private vulnerability reporting](https://github.com/cablate/ci-local-guard/security/advisories/new) for sensitive findings; see [security reporting guidance](https://github.com/cablate/ci-local-guard/security/policy).
+## Change a public interface
 
-## Releasing
+Commands, options, configuration/report formats and documented environment variables are public interfaces. Internal module exports are not a stable library API.
 
-package.json owns the version. `.claude-plugin/plugin.json` mirrors it because Claude requires its own manifest: after changing the package version, run `npm run distribution:sync`; CI rejects drift. Do not repeat the version in the marketplace entry. Keep private: true: distribution is through GitHub, not npm registry. No npm login, token or OIDC configuration is required.
+When behavior changes, update the relevant guide and both changelogs. Add tests for the intended use and affected failure cases. In your change description, distinguish local testing from any hosted testing you actually ran.
 
-For each release:
-1. Change package.json version; run `npm run distribution:sync`. Move reviewed Unreleased notes to `## [<version>] - YYYY-MM-DD` in both CHANGELOG.md and CHANGELOG.zh-TW.md, leaving an empty Unreleased section. Add the comparison link and explain required migration in an Upgrading paragraph. `node quality/release-notes.mjs` reads the package version and uses `tools/docs.mjs` to derive bilingual notes from these owners; `node tools/docs.mjs release <version>` previews a specific version.
-2. Run tests, distribution:check and both `claude plugin validate --strict .` and `claude plugin validate --strict .claude-plugin/plugin.json`. Review package contents and external changes.
-3. Merge the reviewed, green commit to main. No automatic merge or tag creation.
-4. With release approval, push `v<package-version>` at that commit. Release reuses Windows/Linux tests and the pinned Claude validator, checks tag/version/notes and main ancestry, then creates an experimental GitHub Release with the CLI tarball and SHA256SUMS. Only the release job receives contents:write; ordinary branch pushes never publish. Tags are immutable; a failed release must be investigated before any retry.
-5. Download the release archive, verify its SHA256, run its `--version` and `--help`, and verify remote marketplace installation/update/removal with isolated Claude settings. Install dependencies only where required by the consuming project, not by this distribution layer.
+## Write documentation people can use
 
-If a version is bad, pin consumers to the last known good tag/SHA and prepare a reviewed patch version. Do not move published tags or automatically delete release assets. GitHub checksums provide integrity checks, not a separate publisher signature. Natural-language skill adoption remains distinct from manifest/install verification.
+Start with what the reader wants to do. Explain an unfamiliar term before using it, put one action in each step, and show what the user should expect afterward.
 
-A release requires clean-clone/install tests, cross-platform Hosted CI, review of current files and Git history, a working private security-report channel and maintainer approval. The workflow runs offline tests on Windows and Ubuntu; verify its actual result before claiming Hosted success. Tags, Releases, registry publication, history rewrites and repository visibility/settings changes need explicit approval.
+- README introduces the tool and gives the shortest route to using it.
+- docs/reference explains setup, formats, command details and troubleshooting.
+- AGENTS and skills/ci/SKILL.md direct agents to those guides; they do not need another copy of the manual.
+- CHANGELOG explains what changed for users. Start with the benefit and give migration steps separately.
 
-## Writing docs
+Place an important warning beside the operation it affects and explain what to do instead. Avoid repeating the same disclaimer in every section or putting internal audit records into a product introduction.
 
-Public README, reference and changelog documents use English sources and matching
-Traditional Chinese files named X.zh-TW.md. Contributor/security documents may
-remain English-only. Keep corresponding headings, lists and tables aligned;
-commands and fenced code must be identical. Translate explanations, not schema
-keys or paths. Run `node tools/docs.mjs check`; it checks structure, links, inline
-code and complete fenced-code contents, not translation meaning or command safety.
-Review those manually. The full test suite and CI enforce the same documentation
-check; missing translations or divergent executable examples block delivery.
+README, reference and changelog use English and Traditional Chinese pairs. Contributor and security guidance may remain English-only. Keep headings, lists and tables aligned; commands, field names and fenced examples must match. Check them with:
 
-Use Keep a Changelog categories Added/Changed/Deprecated/Removed/Fixed/Security,
-translated as 新增/變更/棄用/移除/修正/安全性. Put the user benefit first and explain
-required upgrade steps separately. Update both Unreleased sections when a change
-is made. Do not hand-author a second set of GitHub Release notes or move old tags.
+```sh
+node tools/docs.mjs check
+```
+
+This checks structure and examples, not whether the translation reads naturally. Read both versions as well. CI and the full test suite run the same check.
+
+Use Keep a Changelog categories Added/Changed/Deprecated/Removed/Fixed/Security, translated as 新增/變更/棄用/移除/修正/安全性. Add new changes under Unreleased in both languages. Release notes come from those files rather than a separately written version.
+
+## Keep public documents focused
+
+Everything tracked in this public repository is public, including agent instructions. Separate documents by reader, not by pretending a folder is private:
+
+| Document | Reader and purpose | Distribution |
+|---|---|---|
+| README pair | New users: what the tool does and how to start | Repository and CLI archive |
+| docs/reference pair | Users and agents: setup, commands, results and troubleshooting | Repository and CLI archive |
+| CHANGELOG pair | Upgrading users: changes and migration | Repository and CLI archive |
+| CONTRIBUTING.md | Contributors: development, documentation and releases | Repository; linked from the installed README |
+| AGENTS.md | Agents editing Guard's own code | Repository |
+| skills/ci/SKILL.md | Claude users operating Guard on their projects | Plugin |
+| .github/SECURITY.md | Anyone reporting a security concern | Repository and GitHub Security tab |
+| LICENSE | Everyone using or distributing the code | Repository and CLI archive |
+
+Keep work diaries, internal TODO checklists, raw test/run logs, scan details, personal paths and private project examples out of tracked files and release attachments. Put temporary evidence outside the tracked tree. Share only the relevant, reviewed conclusion in the appropriate public guide or changelog. README holds a short current status and next priority, not an execution history.
+
+package.json's files list controls the CLI archive, and package tests check the allowed contents. The Claude plugin uses a checkout of the public repository; the CLI file list does not filter that checkout. A directory name or .gitignore rule does not make an already tracked file private. Before publishing, review git diff and npm pack --dry-run --json as well as any separately attached assets.
+
+## Report a problem
+
+For ordinary bugs, [open an issue](https://github.com/cablate/ci-local-guard/issues). Include the tool version, OS, Node/Git versions, steps to reproduce, expected result and actual exit code/report. A small example with made-up data is ideal.
+
+For sensitive findings, follow the [security reporting guide](https://github.com/cablate/ci-local-guard/security/policy). Remove credentials and private details from anything you post publicly.
+
+## Publish a release
+
+This section is for maintainers. Distribution uses GitHub Releases and the Claude plugin; npm registry publication stays disabled through private: true.
+
+### Prepare the version
+
+1. Change the version in package.json, then run npm run distribution:sync. This updates the Claude plugin manifest; keep the marketplace entry free of a separate version.
+2. Move reviewed Unreleased notes into a dated section in both changelogs: ## [<version>] - YYYY-MM-DD. Leave an empty Unreleased section, add a comparison link, and explain migration in an Upgrading paragraph.
+3. Run tests, npm run distribution:check and the documentation check. Validate the plugin with claude plugin validate --strict . and claude plugin validate --strict .claude-plugin/plugin.json. Review the package contents, current files and Git history for accidental private data.
+4. Confirm clean-clone/install tests, Windows/Ubuntu hosted checks and the private security-report channel, then merge the reviewed passing commit to main.
+
+Preview the release notes:
+
+```sh
+node quality/release-notes.mjs
+```
+
+This uses the package version and the shared tools/docs.mjs parser. To preview another version, use node tools/docs.mjs release <version>.
+
+### Publish and check the result
+
+With maintainer approval, push v<package-version> at the reviewed main commit. The release workflow repeats Windows/Linux and plugin checks, verifies the tag/version/notes and main ancestry, then publishes an experimental GitHub Release with the CLI archive and SHA256SUMS. Only that publishing job gets contents:write; an ordinary branch push does not publish.
+
+Download the archive, verify its SHA256, and run --version and --help. Test marketplace installation, upgrade and removal with isolated Claude settings. These checks verify distribution; they do not prove how every AI will use the skill.
+
+If a release is broken, investigate before retrying. Point users to the last working tag or SHA and prepare a patch version. Leave published tags and assets unchanged. Checksums verify file integrity, not an independent publisher signature.
+
+Tagging, publishing, changing repository visibility/settings and rewriting history each need approval. npm accounts, tokens and OIDC setup are not part of this release process.

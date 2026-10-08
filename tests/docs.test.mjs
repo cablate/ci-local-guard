@@ -14,22 +14,39 @@ test('all public bilingual owners pass the same documentation check used by CI',
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
-test('public guides resolve relative links and the README offline example produces its claimed evidence', t => {
+test('public guides resolve relative links and the reference offline example produces its claimed evidence', t => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  for (const file of ['README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md']) {
+  const headings = text => {
+    const counts = new Map();
+    const anchors = new Set();
+    const prose = text.replace(/```[^\n]*\n[\s\S]*?\n```/g, '');
+    for (const match of prose.matchAll(/^#{1,6}\s+(.+)$/gm)) {
+      const slug = match[1].trim().toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replace(/ /g, '-');
+      const count = counts.get(slug) || 0;
+      anchors.add(count ? `${slug}-${count}` : slug);
+      counts.set(slug, count + 1);
+    }
+    return anchors;
+  };
+  for (const file of ['README.md', 'README.zh-TW.md', 'docs/reference.md', 'docs/reference.zh-TW.md',
+    'CONTRIBUTING.md', 'AGENTS.md', '.github/SECURITY.md', 'skills/ci/SKILL.md', 'CHANGELOG.md', 'CHANGELOG.zh-TW.md']) {
     const text = readFileSync(path.join(root, file), 'utf8');
     for (const match of text.matchAll(/\]\(([^)]+)\)/g)) {
-      const target = match[1].split('#')[0];
-      if (!target || /^[a-z]+:/i.test(target)) continue;
-      assert.ok(existsSync(path.resolve(root, path.dirname(file), target)), `${file} has a broken link: ${target}`);
+      const [target, anchor] = match[1].split('#');
+      if (/^[a-z]+:/i.test(target)) continue;
+      const resolved = target ? path.resolve(root, path.dirname(file), target) : path.join(root, file);
+      assert.ok(existsSync(resolved), `${file} has a broken link: ${target}`);
+      if (anchor && resolved.endsWith('.md')) {
+        assert.ok(headings(readFileSync(resolved, 'utf8')).has(decodeURIComponent(anchor)), `${file} has a broken heading link: ${match[1]}`);
+      }
     }
   }
   const temp = mkdtempSync(path.join(os.tmpdir(), 'guard-readme-demo-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
-  const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
+  const readme = readFileSync(path.join(root, 'docs/reference.md'), 'utf8');
   const block = [...readme.matchAll(/```sh\r?\n([\s\S]*?)\r?\n```/g)]
     .map(match => match[1]).find(text => text.includes("writeFileSync('demo-runs.json'"));
-  assert.ok(block, 'README must provide an executable, nonempty offline example');
+  assert.ok(block, 'reference must provide an executable, nonempty offline example');
   const lines = block.split(/\r?\n/);
   const code = lines[0].match(/^node --input-type=module -e "(.+)"$/)?.[1];
   assert.ok(code);

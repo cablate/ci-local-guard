@@ -1,56 +1,62 @@
 # Changelog
 [繁體中文](CHANGELOG.zh-TW.md)
 
-User-facing changes follow Keep a Changelog. package.json owns the version; experimental 0.x minor releases may change behavior.
+Changes to know about when using or upgrading Guard. Entries follow Keep a Changelog. While Guard is experimental, 0.x minor releases may change how it works; check the upgrade notes before updating.
 
 ## [Unreleased]
 
+### Changed
+- Rewrote the guides around everyday tasks: setup, reading results, investigating failures and maintaining an installation. Update and uninstall commands now have separate examples.
+- Simplified the AI, contributor and security-reporting instructions, fixed their navigation, and added heading-link checks across all Markdown guides. Command behavior and data formats are unchanged.
+- Edited earlier changelog entries for readability while keeping their version dates and recorded changes.
+- Kept contributor/release instructions in the repository rather than the CLI archive. The installed README links to them; user guides, changelogs and the license remain bundled.
+
 ## [0.1.1] - 2026-10-08
 
-Upgrade for clearer AI adoption from a repository URL, bilingual installed contracts and suppressed raw plan-failure output. Guard remains experimental; local evidence is not Hosted CI PASS.
+This update makes it easier to get your AI started with Guard. The installed package includes English and Traditional Chinese guides, and failed plan scripts no longer send their raw output into agent diagnostics.
 
-**Upgrading:** No descriptor or receipt migration. Update your pinned GitHub archive/clone or Claude marketplace plugin and confirm --version is 0.1.1. Failed plan output is no longer echoed; inspect the project-owned adapter locally when needed.
+**Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.1.1. Existing configuration and receipts need no migration. If a plan script fails, inspect it locally; its raw output is no longer echoed.
 
 ### Changed
-- Agents can follow the English or Traditional Chinese adoption guide from a repository URL, find installed contracts and distinguish dirty checks, exact-commit results and unverified CI responsibilities. Both guides and references ship in the CLI archive.
-- Contributors can detect bilingual structure and executable-example drift with tools/docs.mjs; release notes use the same parser and paired changelogs rather than a second format.
+- Added matching English and Traditional Chinese setup guides to the CLI archive. They explain when to check unfinished edits, when to check a commit, and how to read work that remains unverified.
+- Added tools/docs.mjs to check that translated documents have matching structure and runnable examples. Release notes now use the same parser and both changelogs.
 
 ### Security
-- Failed plan adapters no longer echo raw stdout/stderr into terminal or agent diagnostics. Exit status and failed/blocked reports remain unchanged; inspect the project-owned adapter locally. This is not comprehensive secret redaction or a sandbox.
+- Stopped echoing a failed plan adapter's raw stdout/stderr into terminal and agent diagnostics. Its exit status and failed/blocked result are unchanged. This targets plan-failure output; other logs still need review before sharing.
 
 ## [0.1.0] - 2026-10-08
 
-Install from GitHub without an npm account. This first experimental release gives agents exact-commit checks, bounded failure evidence and a thin Claude entrypoint. package.json owns the version. Local success is not a complete Hosted CI verdict.
+Install from GitHub without an npm account. The first experimental release brings local commit checks, manageable failure logs and a Claude Code plugin. Run local checks before pushing, then let hosted CI cover the remaining work.
 
-**Upgrading:** Consumers relying on implicit adapters must commit their own .ci-local-guard.json and scripts; there is no fallback. Read reports: standalone exit zero or PASS text is not complete CI verification.
+**Upgrading:** Projects that previously relied on an implicit adapter now need their own committed .ci-local-guard.json and scripts. Read the result report for coverage; a successful command or PASS message alone does not say that every CI check ran.
 
 ### Added
-- GitHub Release archives and checksums, fixed-version offline npm-exec installation coverage and tag-gated release checks. npm registry publication is disabled.
-- Thin Claude skill plugin bundling the same CLI core, with marketplace metadata and checked version synchronization. No auto hooks, MCP or separate runner.
-- `--version` for installed CLI identity checks.
-- Doctor capability-specific blockers, required inputs and unverified prerequisites in full and compact reports; offline work stays independent of project setup.
-- Failed-check evidence locations from runner-recorded redacted UTF-8 byte ranges and validated receipt IDs, not log-text heuristics.
-- Offline `read-evidence` JSON pages with bounded UTF-8 reads, explicit continuation versions and machine-readable failure reasons; retained evidence includes non-automatic reader arguments.
-- Agent summaries and exclusive full-report `--output` for preflight / doctor --check, including stable action kinds, evidence IDs and explicit unknown applicability; saved reports never replace fresh checks.
-- Read-only `doctor --check --json` separates committed setup from unverified dependencies and Hosted checks.
-- Project-owned self-preflight and short repository agent entrypoint.
-- Bounded execution (default 900 seconds), cancellation, owned process-tree termination and retained-checkout diagnostics.
-- Public onboarding with a non-empty offline timing demo, English entry point and copyable agent handoff.
-- Exact-commit local preflight, bounded logs and validated project receipts.
-- Explicit project-owned plans and local push policies; missing evidence blocks push.
-- Read-only GitHub Actions run collection and offline timing diagnostics/comparison.
-- AI operating guidance and installed-consumer documentation discovery.
+- GitHub Release archives and checksums, with tests for fixed-version offline npm-exec installation. Releases check the tag before publishing; npm registry publication is disabled.
+- A Claude Code plugin that bundles the same CLI and keeps its version in sync. It provides a skill rather than another runner, automatic hooks or an MCP server.
+- `--version` to identify the installed CLI.
+- Doctor reports that show the requirements and known blockers for each capability, so offline analysis can be used without project setup.
+- Log locations for failed checks, using recorded byte positions and validated check IDs instead of guessing from log text.
+- `read-evidence` to read logs in small JSON pages, with continuation versions and reasons when a file cannot be read.
+- Short agent reports and `--output` for saving a full preflight or doctor report to a new file. Reports include suggested next steps, log references and work whose relevance is still unknown.
+- Read-only `doctor --check --json` to inspect committed setup and show which dependencies or hosted checks still need verification.
+- A project-owned adapter and short AI entry point so Guard can test itself.
+- A 900-second execution deadline by default, cancellation handling, termination of the started process tree, and diagnostics when a checkout must be retained.
+- A runnable offline timing example and a copyable request for asking an AI to set up the tool.
+- Local checks against a specific commit, with bounded logs and validated results from project scripts.
+- Project-defined plans and local push rules that block when required results are missing.
+- GitHub Actions run collection and offline timing analysis/comparison.
+- Instructions for AI users, discoverable from an installed CLI.
 
 ### Changed
-- Completed a six-run fixture-cost experiment; reverted the candidate because its 7.6% median wall reduction missed the predefined 10% threshold (mean wall unchanged; no attributable savings claim).
-- Removed application-specific script/branch assumptions and external checkout fallback.
-- Removed PASS caching, downstream deployment previews and seven expanded diagnostic commands.
-- Removed the legacy check command. Explicit comparison base is required; plan requires an explicit committed head.
+- Tried reducing repeated fixture setup in a six-run experiment. The 7.6% median wait improvement missed the chosen 10% target, and mean wait was unchanged, so the change was reverted.
+- Removed assumptions about application names, scripts and branches, along with fallback rules borrowed from another checkout.
+- Removed cached PASS results, deployment previews and seven expanded diagnostic commands.
+- Removed the old check command. A comparison base must now be explicit, and plan needs a committed head.
 
 ### Fixed
-- CLI help now identifies the already-public repository as experimental rather than a private candidate.
-- Prevent redaction-delayed stdout/stderr tails from splicing ordinary evidence lines.
-- Compare Windows test paths with native filesystem canonicalization.
+- Updated CLI help to describe the already-public tool as experimental rather than a private candidate.
+- Kept stdout/stderr log lines separate when redaction delays their final bytes.
+- Used native path normalization for Windows test comparisons.
 
 [unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1

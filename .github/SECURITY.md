@@ -1,9 +1,16 @@
-# Reporting a security vulnerability
+# Report a security problem
 
-Use [GitHub private vulnerability reporting](https://github.com/cablate/ci-local-guard/security/advisories/new) for sensitive findings. Do not post exploit details, credentials, private paths or raw logs in public Issues.
+Please use [GitHub private vulnerability reporting](https://github.com/cablate/ci-local-guard/security/advisories/new) if a finding could expose data or be used to attack someone. This lets us discuss it privately before sharing details.
 
-Include the affected commit/version, OS and Node/Git versions, a minimal reproduction, expected and observed behavior, and sanitized evidence. This experimental project has no promised response SLA or supported release series yet.
+## What to include
 
-For non-sensitive bugs, use [Issues](https://github.com/cablate/ci-local-guard/issues).
+- The affected version or commit.
+- Your operating system and Node/Git versions.
+- A small example or steps that reproduce the problem.
+- What you expected, what happened, and any relevant evidence with private details removed.
 
-This document defines the reporting channel only; it does not exclude findings or set scanner severity policy.
+Keep credentials, exploit details, private paths and raw logs out of public issues. For ordinary bugs that are safe to discuss publicly, use [Issues](https://github.com/cablate/ci-local-guard/issues).
+
+## What to expect
+
+Guard is experimental. There is not yet a supported-release schedule or a guaranteed response time. You can still report a concern about any version; this guide describes how to contact us, not which findings count or how severe they are.

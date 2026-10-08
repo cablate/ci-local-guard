@@ -1,56 +1,62 @@
 # 版本紀錄
 [English](CHANGELOG.md)
 
-使用者可見變更依 Keep a Changelog 整理。package.json 擁有版號；experimental 0.x 次版號可能改變行為。
+這裡記錄使用或升級 Guard 時需要知道的變更，依 Keep a Changelog 整理。工具仍在實驗階段，0.x 次版號可能調整用法；更新前請先看升級說明。
 
 ## [未發布]
 
+### 變更
+- 指南按日常任務重寫：接入、看結果、查失敗、維護安裝。更新與移除指令也分開示範。
+- 簡化 AI、貢獻者和安全回報指引，修正導航，並為所有 Markdown 指南加入標題連結檢查。指令行為與資料格式不變。
+- 整理過往版本紀錄的文字，保留原有日期與變更事項。
+- 貢獻與發布指引留在 repo，不再放進 CLI 壓縮檔；安裝版 README 改用連結導向。使用指南、版本紀錄與授權仍隨包提供。
+
 ## [0.1.1] - 2026-10-08
 
-升級可取得從 repository URL 開始的清楚 AI 接入流程、安裝版雙語契約，以及不回印原始 plan 失敗輸出的修補。Guard 仍是 experimental；本機證據不是 Hosted CI PASS。
+這一版讓 AI 更容易開始使用 Guard。安裝包包含英文與繁中指南；plan 腳本失敗時，也不再把原始輸出帶進 Agent 診斷。
 
-**升級：** descriptor 與 receipt 不需遷移。更新固定版 GitHub 壓縮檔／clone 或 Claude marketplace plugin，確認 --version 為 0.1.1。plan 失敗輸出不再回印；需要時在本機檢查專案擁有的 adapter。
+**升級：** 更新 GitHub 壓縮檔／clone 或 Claude marketplace plugin，確認 --version 顯示 0.1.1。既有設定與檢查紀錄不用遷移。plan 腳本失敗時，請在本機檢查；原始輸出不再回印。
 
 ### 變更
-- Agent 可從 repository URL 讀英文或繁中接入指引、找到安裝版契約，並區分 dirty 檢查、exact-commit 結果與未驗證 CI 責任。CLI 壓縮檔包含雙語指引與參考文件。
-- 貢獻者可用 tools/docs.mjs 查出雙語結構與可執行範例漂移；Release notes 使用同一 parser 與配對 changelog，不另維護第二種格式。
+- CLI 壓縮檔加入配對的英文、繁中接入指南，說明何時檢查未完成的修改、何時檢查 commit，以及怎麼看待仍未驗證的工作。
+- 加入 tools/docs.mjs，檢查翻譯文件的結構與可執行範例是否一致。Release notes 也改用同一 parser，從雙語 changelog 產生。
 
 ### 安全性
-- plan adapter 失敗時不再把原始 stdout/stderr 帶入終端或 Agent 診斷。退出狀態與 failed/blocked 報告不變；請在本機檢查專案擁有的 adapter。這不是全面秘密遮罩或 sandbox。
+- plan adapter 失敗時，不再把原始 stdout/stderr 回印到終端與 Agent 診斷；退出狀態與 failed/blocked 結果不變。這項修補針對 plan 失敗輸出，其他日誌分享前仍需檢查。
 
 ## [0.1.0] - 2026-10-08
 
-不需要 npm 帳號，直接從 GitHub 安裝。首個實驗版提供 Agent exact-commit 檢查、有界失敗證據與 Claude 薄入口。package.json 擁有版號；本機成功不代表完整 Hosted CI 通過。
+不需要 npm 帳號，直接從 GitHub 安裝。第一個實驗版提供本機 commit 檢查、分段讀取失敗日誌，以及 Claude Code plugin。push 前先跑本機檢查，其餘工作交給雲端 CI。
 
-**升級：** 依賴隱含 adapter 的專案須提交自己的 .ci-local-guard.json 與 scripts；沒有 fallback。請讀取報告：standalone exit zero 或 PASS 文字不代表完整 CI 已驗。
+**升級：** 以前依賴隱含 adapter 的專案，現在需要提交自己的 .ci-local-guard.json 和腳本。請從報告確認檢查範圍；指令成功或出現 PASS 文字，不表示每項 CI 檢查都跑過。
 
 ### 新增
-- GitHub Release 壓縮檔與校驗碼、固定版本離線 npm-exec 安裝驗證、tag 發布關卡；停用 npm registry 發布。
-- Claude 薄 skill plugin，內含同一份 CLI、marketplace metadata 與版號同步驗證；沒有自動 hooks、MCP 或第二套 runner。
-- `--version` 查驗已安裝 CLI 身分。
-- Doctor 在完整與精簡報告區分各能力的缺項、必要輸入及未驗證條件；離線分析不依賴專案接入。
-- 失敗 check 以 runner 記錄的遮罩後 UTF-8 byte range 與 validated receipt ID 定位，不從日誌文字猜測。
-- 離線 `read-evidence` 有界 JSON 分頁，含續頁版本與機器可判讀的失敗原因；保留證據附非自動執行的 reader 參數。
-- preflight／doctor --check 的 Agent 摘要與不覆寫完整報告 `--output`，包含穩定 action kinds、evidence IDs 與未知適用性；舊報告不能替代新檢查。
-- 唯讀 `doctor --check --json` 區分已提交設定、尚未驗證的依賴與 Hosted 責任。
-- 專案擁有的自身預檢與簡短 AI 入口。
-- 預設 900 秒期限、取消、所啟動程序樹終止，以及保留 checkout 診斷。
-- 公開上手流程、非空離線耗時範例、英文入口與可複製 Agent 指引。
-- Exact-commit 本機預檢、有界日誌與 receipt 驗證。
-- 明確的專案 plan 與本機 push policy；缺證據時阻擋。
-- 唯讀 GitHub Actions metadata 收集與離線分析／比較。
-- AI 操作指引與已安裝 consumer 文件導航。
+- GitHub Release 壓縮檔與校驗碼，以及固定版本的離線 npm-exec 安裝測試。發布前會核對 tag；停用 npm registry 發布。
+- Claude Code plugin，內含同一份 CLI 並同步版號。提供的是 skill，不是另一套 runner、自動 hooks 或 MCP server。
+- `--version`，查看已安裝 CLI 的版本。
+- Doctor 依各項能力列出需求與已知缺項；即使未接入專案，也能使用離線分析。
+- 失敗檢查的日誌位置，以實際寫入的位元組位置與已驗證 check ID 對應，不從日誌文字猜測。
+- `read-evidence`，將日誌切成小份 JSON 讀取，包含續頁版本與無法讀取時的原因。
+- Agent 短報告與 `--output`，可把完整 preflight 或 doctor 報告存成新檔，包含下一步建議、日誌位置和適用性仍未知的工作。
+- 唯讀 `doctor --check --json`，查看已提交設定，並列出尚待驗證的依賴或雲端檢查。
+- 專案擁有的 adapter 與簡短 AI 入口，讓 Guard 能檢查自己。
+- 預設 900 秒期限、取消處理、終止這次啟動的程序樹，以及需要保留 checkout 時的診斷。
+- 可執行的離線耗時範例，以及可直接交給 AI 的接入請求。
+- 指定 commit 的本機檢查，包含有大小限制的日誌與專案腳本結果驗證。
+- 由專案定義的 plan 與本機 push 規則；缺少必要結果時會阻擋。
+- GitHub Actions 執行紀錄收集，以及離線耗時分析／比較。
+- AI 使用指引，能從已安裝的 CLI 找到。
 
 ### 變更
-- 完成六次 fixture 成本實驗；中位等待改善 7.6% 未達原定 10% 門檻、平均等待相同，因此撤回候選，不宣稱可歸因的節省。
-- 移除特定應用程式、分支與外部 checkout fallback 假設。
-- 移除 PASS cache、下游部署預覽與七項擴張指令。
-- 移除舊 check 指令；明確指定比較 base，plan 必須提供已提交 head。
+- 用六次執行實驗，嘗試減少重複的測試資料準備。中位等待改善 7.6%，未達選定的 10% 目標，平均等待也沒有變化，因此撤回修改。
+- 移除對應用名稱、腳本與分支的假設，也不再借用其他 checkout 的規則。
+- 移除 PASS 結果快取、部署預覽與七項擴張診斷指令。
+- 移除舊 check 指令。現在必須明確指定比較基準，plan 也需要已提交的 head。
 
 ### 修正
-- CLI help 正確標示 public-experimental。
-- 避免遮罩延遲造成 stdout／stderr 日誌行黏接。
-- Windows 測試路徑使用原生 filesystem 正規化。
+- CLI help 正確介紹為已公開的實驗工具，不再寫成私人候選版本。
+- 遮罩延遲處理最後幾個字元時，stdout/stderr 日誌行仍保持分開。
+- Windows 測試比較使用系統原生的路徑正規化。
 
 [unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
