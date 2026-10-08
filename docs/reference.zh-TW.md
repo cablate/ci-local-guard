@@ -21,6 +21,7 @@
 2. 修改期間，直接在工作目錄執行它列出的 CI 命令。
 3. 提交後、推送前，執行 ci verify。要細看某一部分時，再用 ci check 或 ci replay。
 4. 回報哪些已在本機通過、哪些預期會失敗、哪些仍需要 Hosted CI。
+5. 如果 GitHub 上的 run 仍然失敗，用 ci locate 找出失敗的 step 與測試。
 
 ### 推送前檢查 commit
 
@@ -60,6 +61,26 @@ history 用 gh 唯讀讀取一個 workflow 已完成的 runs，包含被重跑�
 baseline.speedLeads 指出時間花在哪裡：最後完成的 job（它決定等待時間）、占掉大部分時間的 step、準備步驟的比例，以及耗時差很多的 matrix legs。每項都附數字並說明下一步該量什麼，都不是已證明的節省。要看測試 step 內部，加上 --test-timing "<job 名稱>" --compare-job "<另一個 job>"：history 會讀該 job 最近幾次成功 run 的 log（--samples，預設 3），從 TAP 輸出取得測試耗時，列出最慢的測試、和另一個 job 的倍數，以及這個 step 實際的平行程度。
 
 avoidable 加總第一類的 attempts、等待時間與分鐘數。--save-export 保存下載的資料，之後用 --input 就不必重抓。結果為 measured（exit 0）或 blocked（exit 2）。
+
+### 定位 GitHub 失敗的 run
+
+```sh
+node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --run <run-id> --summary
+```
+
+locate 用 gh 唯讀讀取 run 的 jobs，以及失敗 jobs 的 log。預設取 HEAD commit 的所有 runs；--head 指定其他 commit，--workflow 只看一份 workflow 檔，--run（可加 --attempt）指定一個 run。每個失敗的 job 會列出失敗的 step、對應的 workflow 行號與命令、錯誤標註，以及最後幾行輸出。如果該 step 有 TAP 輸出，failedTests 會列出每個失敗測試的檔案與行號、assertion 失敗的那一行，以及錯誤訊息的前幾行（包含實際值與預期值）。
+
+失敗 job 的 log 會存在 .git/ci-local-guard/hosted-logs，下次直接重用。報告不包含整份 log，而是給出該 step 區段與每個失敗測試的 read-evidence 參數，讓 AI 只讀需要的部分。nextActions 也會建議要打開的 workflow 行、本機與 runner 是同一種 OS 時可直接執行的命令、Linux job 對同一個 commit 的 ci replay，以及再次推送前的 ci verify。如果 run 對應的 commit 與你的 HEAD 不同，也會註明。
+
+| 結果 | 意義 | Exit |
+|---|---|---|
+| passed | 選定的 runs 沒有失敗的 job | 0 |
+| located | 每個失敗的 job 都在 log 中定位到 step | 1 |
+| blocked | 輸入無效、找不到 GitHub repository，或 gh 失敗 | 2 |
+| incomplete | log 缺失、log 中找不到該 step、run 仍在執行，或這個 commit 沒有 runs | 3 |
+
+失敗資訊是觀察到的輸出，不是診斷出的原因。準備步驟失敗會標為 runner-setup，因為原因不一定是專案的修改。
 
 ### 探索 CI
 
@@ -119,7 +140,7 @@ node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/
 
 step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow 行號、run 命令、輸出的最後幾行，以及 TAP「not ok」測試名稱。這些是觀察到的輸出，不是診斷出的原因。evidence.reader 是讀取保留 log 中該 step 區段的 read-evidence 參數。nextActions 會建議讀該區段、打開 workflow 那一行、在工作目錄執行該命令，並在提交修正後再重播。通過只涵蓋 coverage.replayed；coverage.notReplayed 與 coverage.notSelected 要在 Hosted CI 確認。
 
-報告使用 ci-local-guard/ci-inventory/v1、ci-local-guard/ci-check/v1 與 ci-local-guard/ci-replay/v1。閱讀 outcome 時也要看 identity、scope、coverage、issues。workflow 修改比較與最佳化實驗仍在規劃，尚未實作。既有命令的 schemas 與 exit codes 不變。
+報告使用 ci-local-guard/ci-inventory/v1、ci-local-guard/ci-check/v1、ci-local-guard/ci-replay/v1 與 ci-local-guard/ci-locate/v1。閱讀 outcome 時也要看 identity、scope、coverage、issues。workflow 修改比較與最佳化實驗仍在規劃，尚未實作。既有命令的 schemas 與 exit codes 不變。
 
 ## 接入專案
 

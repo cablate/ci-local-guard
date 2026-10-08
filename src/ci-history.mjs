@@ -97,7 +97,7 @@ export function measure(entry) {
 }
 
 // GitHub names matrix jobs "name (v1, v2)" unless the name already uses matrix values.
-function hostedNames(workflow) {
+export function hostedNames(workflow) {
   const names = new Map();
   for (const job of workflow.jobs || []) {
     const legs = [...job.localReplay.replayable, ...job.localReplay.hostedOnly.map(item => item.matrix),

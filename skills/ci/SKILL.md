@@ -25,6 +25,10 @@ placeholders before running commands; do not substitute a guessed registry packa
   verdict, expectedFailures, hostedOnly and notVerified. Fix expected failures
   in the working tree with the listed command, commit and verify again. Tell the
   user what still needs GitHub. Replays execute project code in containers.
+- **A GitHub run failed:** run `ci locate --repo <repo> --summary` (or `--run <id>`).
+  Read verdict and failures: job, step, workflow line and failedTests with file
+  and line. Read a test's log section with the listed read-evidence arguments
+  instead of the whole log. Fix, commit and run `ci verify` before pushing again.
 - **Uncommitted edits:** use the project's normal targeted tests.
 - **A committed candidate:** use preflight with explicit base and head.
 - **Failed local checks:** inspect the report, then read the relevant log pages.

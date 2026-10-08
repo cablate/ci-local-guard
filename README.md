@@ -86,9 +86,10 @@ Not in v0.1.1 yet. These commands need no adapter; they read your GitHub workflo
 ```sh
 node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
 node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
 ```
 
-discover tells your AI which commands CI runs, which jobs can run locally and which only GitHub can check. verify takes the commit you are about to push, works out which workflows it triggers, and runs the Linux jobs in local containers. It reports what is expected to fail, with the failing step, command and log location, and what still needs GitHub, such as Windows jobs or jobs that use secrets. Details are in the [reference](docs/reference.md#understand-check-and-replay-ci-unreleased).
+discover tells your AI which commands CI runs, which jobs can run locally and which only GitHub can check. verify takes the commit you are about to push, works out which workflows it triggers, and runs the Linux jobs in local containers. It reports what is expected to fail, with the failing step, command and log location, and what still needs GitHub, such as Windows jobs or jobs that use secrets. If a GitHub run still fails, locate finds the runs for your HEAD commit and points to the failed job, step and tests with their file and line. It saves that step's log locally so the AI reads only the part it needs. Details are in the [reference](docs/reference.md#understand-check-and-replay-ci-unreleased).
 
 ## Investigate slow CI
 
@@ -131,6 +132,6 @@ Guard runs your project's scripts with your local permissions, so use it with pr
 
 [v0.1.1](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.1) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/37725011025) pass, and we've tested the release archive and Claude Code 2.1.293 plugin installation, upgrade and removal. macOS, arm64, Claude Desktop and WSL have not been tested.
 
-We use Guard to check this repository too. The unreleased development source adds pre-push checking with ci discover, ci check, ci replay and ci verify, tested so far on Windows with Docker Desktop (Linux containers). Fetching logs of failed GitHub runs, comparing workflow changes and measuring CI speed-ups are next. These commands are not included in v0.1.1.
+We use Guard to check this repository too. The unreleased development source adds pre-push checking with ci discover, ci check, ci replay and ci verify, ci history for what failures and slow jobs cost, and ci locate for failed GitHub runs. It has been tested so far on Windows with Docker Desktop (Linux containers). Comparing workflow changes is next. These commands are not included in v0.1.1.
 
 Found something confusing or broken? [Open an issue](https://github.com/cablate/ci-local-guard/issues) with your tool version, operating system and a small example.

@@ -394,6 +394,10 @@ Local repository commands (require Git; trust project code before execution):
              [--platform ...] [--timeout ...] [--summary] [--output <new-file>]
     Hosted baseline and failure cost from completed runs (read-only, needs gh). --reproduce runs ci verify on each failed
     commit and classifies failures: reproduced locally (avoidable), passed locally, outside local coverage, undetermined.
+  ci locate --repo <project> [--run <id> [--attempt <n>] | --head <ref>] [--workflow <file.yml>] [--repository owner/name] [--summary] [--output <new-file>]
+    After a GitHub run fails: the failed job, step, workflow line and failing tests (file:line, failing assertion line, first error lines), with the
+    step's log saved locally for read-evidence paging (read-only, needs gh). Default: the runs for HEAD.
+    Exit 0 no failed job, 1 located, 2 blocked, 3 incomplete (log missing, run still in progress or no runs).
   ci check --repo <project> [--head <ref>] [--provider actionlint|zizmor] [--binary <trusted-absolute-path>] [--summary] [--output <new-file>]
     Offline static baseline only. Pinned installed tools; no automatic downloads or workflow execution.
   ci replay --repo <project> --workflow .github/workflows/<file> --job <id> [--head <ref>] [--event push|pull_request|workflow_dispatch]

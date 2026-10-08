@@ -9,6 +9,7 @@
 - 新增 ci verify：檢查準備推送的 commit。它判斷這次 push 或 pull request 會觸發哪些 workflows，執行 workflow 靜態檢查並在本機重播會被觸發的 Linux jobs，再列出預期失敗、本機已通過，以及只有 GitHub 能驗證的部分。
 - 新增 ci replay：用 act 0.2.89 在本機 Linux 容器執行已提交 workflow 的一個 job，回報失敗的 step、命令、失敗測試與 log 位置，並只移除它自己建立的 containers、networks、volumes。
 - 新增 ci discover：讀取已提交的 workflows（含本地 reusable workflows 與 composite actions），列出 CI 執行的命令、哪些 job 能在本機跑、本機工具狀態與下一步命令，不需要 adapter。
+- 新增 ci locate：GitHub run 失敗時，找出失敗的 job、step、workflow 行號與失敗測試（附檔案與行號），並把該 step 的 log 存在本機，可分頁讀取。
 - 新增 ci history：列出 workflow 在 Hosted 的等待時間與各 job 耗時基準、失敗 attempts 耗掉的時間與計費分鐘；加上 --reproduce 時，標出哪些失敗能被本機 ci verify 事先抓到。
 - 新增 ci check，以 actionlint／zizmor 對已提交 workflows 做離線基準掃描。既有命令維持相容。
 

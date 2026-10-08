@@ -21,8 +21,9 @@ export function githubGet(endpoint, { execute = spawnSync } = {}) {
   const route = typeof endpoint === 'string' && endpoint.match(/^repos\/([^/]+\/[^/]+)\/(.+)$/);
   const listing = /^workflows\/[A-Za-z0-9_.-]+\.ya?ml\/runs\?status=completed&per_page=(?:[1-9]|[1-9]\d|100)&page=(?:[1-9]|10)$/;
   const attempt = /^runs\/[1-9]\d*\/attempts\/[1-9]\d*(?:\/jobs\?per_page=100&page=(?:[1-9]|10))?$/;
+  const single = /^runs\/[1-9]\d*$|^runs\?head_sha=[a-f0-9]{40}&per_page=100$/;
   const actions = route?.[2].startsWith('actions/') ? route[2].slice(8) : null;
-  if (!route || !repositoryIdentity(route[1]) || !(actions && (listing.test(actions) || attempt.test(actions)))) {
+  if (!route || !repositoryIdentity(route[1]) || !(actions && (listing.test(actions) || attempt.test(actions) || single.test(actions)))) {
     throw new Error('Invalid GitHub metadata endpoint');
   }
   const result = execute('gh', ['api', '--hostname', 'github.com', '--method', 'GET',

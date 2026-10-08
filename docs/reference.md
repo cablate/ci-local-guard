@@ -21,6 +21,7 @@ These commands are in the development source, not in v0.1.1. None of them needs 
 2. While editing, run the CI commands it lists directly in the working tree.
 3. After committing and before pushing, run ci verify. Use ci check or ci replay to look at one part in detail.
 4. Report what passed locally, what is expected to fail and what still needs hosted CI.
+5. If a GitHub run fails anyway, run ci locate to find the failed step and tests.
 
 ### Check a commit before pushing
 
@@ -60,6 +61,26 @@ History reads completed runs of one workflow with gh (read-only), including earl
 baseline.speedLeads points at where time goes: the job that finishes last (and so sets the wait), a step that dominates it, setup overhead, and matrix legs that take very different times. Each lead carries its numbers and says what to measure next; none is a proven saving. To see inside a test step, add --test-timing "<job name>" --compare-job "<other job>": history reads that job's logs from a few successful runs (--samples, default 3), takes test durations from TAP output, and lists the slowest tests, their ratio to the other job and how parallel the step really was.
 
 avoidable adds up the attempts, waiting and minutes of the first class. --save-export keeps the downloaded data so a later --input run does not fetch it again. The result is measured (exit 0) or blocked (exit 2).
+
+### Locate a failed GitHub run
+
+```sh
+node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --run <run-id> --summary
+```
+
+locate reads a run's jobs and the logs of its failed jobs with gh (read-only). By default it takes every run for your HEAD commit; --head picks another commit, --workflow limits it to one workflow file, and --run with optional --attempt picks one run. For each failed job it reports the failed step, the workflow line and command behind it, the error annotations and the last lines of output. When the step printed TAP results, failedTests lists each failing test with its file and line, the line where the assertion failed, and the first lines of the error, including the actual and expected values.
+
+Each failed job's log is saved under .git/ci-local-guard/hosted-logs and reused next time. The report does not include the whole log. It gives read-evidence arguments for the step's section and for each failing test, so the AI reads only those parts. nextActions also suggests the workflow line to open, the command to run when this host has the same OS as the runner, a ci replay of the same commit for Linux jobs, and ci verify before pushing again. If the run is for a different commit than your HEAD, it says so.
+
+| Result | Meaning | Exit |
+|---|---|---|
+| passed | No failed job in the selected runs | 0 |
+| located | Every failed job was traced to a step in its log | 1 |
+| blocked | Invalid input, no GitHub repository or gh failed | 2 |
+| incomplete | A log is missing, the step is not in the log, the run is still in progress or the commit has no runs | 3 |
+
+The failure details are observed output, not a diagnosed cause. A failed setup step is reported as runner-setup, since the project change may not be the cause.
 
 ### Discover the CI
 
@@ -119,7 +140,7 @@ Before running, Guard computes every container, network and volume name act will
 
 For a failed step, failures lists the job, matrix leg, step name, workflow line, the run command, the last lines of its output and any TAP "not ok" test names. These are observed output, not a diagnosed cause. evidence.reader holds read-evidence arguments for that step's section of the retained log. nextActions suggests reading that section, opening the workflow line, running the command in the working tree, and replaying again after committing a fix. A pass covers only coverage.replayed; verify coverage.notReplayed and coverage.notSelected on hosted CI.
 
-Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1 and ci-local-guard/ci-replay/v1. Read identity, scope, coverage and issues alongside outcome. Comparing workflow changes and optimization experiments are planned, not implemented. Existing command schemas and exit codes are unchanged.
+Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1, ci-local-guard/ci-replay/v1 and ci-local-guard/ci-locate/v1. Read identity, scope, coverage and issues alongside outcome. Comparing workflow changes and optimization experiments are planned, not implemented. Existing command schemas and exit codes are unchanged.
 
 ## Connect a project
 
