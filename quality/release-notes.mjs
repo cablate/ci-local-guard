@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
+import { compare, releaseNotes } from '../tools/docs.mjs';
 const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version;
-const section = file => {
-  const content = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
-  const lines = content.split(/\r?\n/);
-  const start = lines.findIndex(line => line.startsWith(`## ${version} — `));
-  if (start < 0) throw new Error(`Missing release notes in ${file}`);
-  const end = lines.findIndex((line, index) => index > start && line.startsWith('## '));
-  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n').trim();
-};
-process.stdout.write(section('CHANGELOG.md') + '\n\n## 繁體中文\n\n' + section('CHANGELOG.zh-TW.md') + '\n');
+const en = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+const zh = readFileSync(new URL('../CHANGELOG.zh-TW.md', import.meta.url), 'utf8');
+const problems = compare(en, zh, { changelog: true });
+if (problems.length) throw new Error(`Bilingual changelog drift: ${problems.join('; ')}`);
+const notes = releaseNotes(en, zh, version);
+if (!notes) throw new Error(`Missing release notes for ${version}`);
+process.stdout.write(notes);

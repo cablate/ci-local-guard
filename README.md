@@ -42,8 +42,8 @@ Use Node >=22.13.0 <23 and Git. Install the Claude marketplace from cablate/ci-l
 | 工作包 | 驗收與狀態 | 下一步／停止邊界 |
 |---|---|---|
 | 1 公開風險盤點 | 已完成本機盤點：39 個 tracked files 靜態審查找到 1 個 Low plan 診斷洩露問題；20 個可達 commits／104 個 blobs 的 15 組疑似 secret 均核對為假資料；作者 Email 已接受公開 | 修補後重驗；歷史是樣式掃描＋候選核對，不宣稱零秘密；發布前核對最終 package 與遠端資產 |
-| 2 AI 採用與雙語入口 | 待做：README 仍以繁中為主、上手與契約混雜 | 英文正本＋繁中、短 AI 接入指引；保留 PRINCIPLE 與現有契約，不另建規則引擎 |
-| 3 文件與版本同步 | 待做：版號同步已有；雙語結構與 release notes 格式尚需收斂 | 補同步檢查、更新／移除／排錯／安全回報；不恢復 npm 發布 |
+| 2 AI 採用與雙語入口 | 進行中：已準備雙語 reference；README 英文／繁中重組尚未完成，暫未切換契約入口 | 完成 README 配對再移除重複契約，核對安裝版導航；保留 PRINCIPLE，不另建規則引擎 |
+| 3 文件與版本同步 | 進行中：CHANGELOG 已改版本／日期格式與雙語同步，Release 共用 docs 產生器；5 個 focused tests 通過 | 完整 docs check 正確阻擋缺少 README 翻譯；完成後接入自身測試與 CI；不恢復 npm 發布 |
 | 4 陌生採用驗收 | 待做：舊 fresh-session 與安裝測試不能代替本輪 | 無舊對話採用或等效隔離 consumer，涵蓋缺配置、失敗、dirty／exact SHA、CI 分析；不得把靜態檢查當成 AI 行為證據 |
 | 5 修補與回歸 | 本機修補已驗：plan 假資料洩露先重現，再驗三條 caller × 兩個 stream；獨立 patch review 無具體問題，Windows 全套 116 tests／115 pass／1 既有 POSIX skip | 雙語與接入完成後再跑最終 focused＋全套＋Hosted Windows／Linux；尚未發布此修補 |
 | 6 發布與收尾 | 待做：保留 v0.1.0 不動 | 通過後提交、合併 main、發新 experimental patch，驗 GitHub 安裝／更新／移除與 archive；需要新帳號／權限只列阻礙，不繞過 |

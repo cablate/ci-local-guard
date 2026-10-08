@@ -23,7 +23,7 @@ assert.deepEqual(read('.claude-plugin/marketplace.json').plugins.map(({ name, so
 if (process.env.RELEASE_TAG) {
   assert.equal(process.env.RELEASE_TAG, `v${pkg.version}`, 'Tag must match package.json');
   for (const file of ['CHANGELOG.md', 'CHANGELOG.zh-TW.md']) {
-    assert.ok(readFileSync(path.join(root, file), 'utf8').split(/\r?\n/).some(line => line.startsWith(`## ${pkg.version} — `)), `Missing versioned release notes in ${file}`);
+    assert.ok(readFileSync(path.join(root, file), 'utf8').split(/\r?\n/).some(line => line.startsWith(`## [${pkg.version}] - `)), `Missing versioned release notes in ${file}`);
   }
 }
 console.log(JSON.stringify({ version: pkg.version, pluginVersion: plugin.version, distribution: 'github', published: false }));

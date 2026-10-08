@@ -39,7 +39,7 @@ Use this repository's Issues for non-sensitive bugs. Include the package version
 package.json owns the version. `.claude-plugin/plugin.json` mirrors it because Claude requires its own manifest: after changing the package version, run `npm run distribution:sync`; CI rejects drift. Do not repeat the version in the marketplace entry. Keep private: true: distribution is through GitHub, not npm registry. No npm login, token or OIDC configuration is required.
 
 For each release:
-1. Change package.json version; run `npm run distribution:sync`. Move reviewed Unreleased notes to `## <version> — experimental` in both CHANGELOG.md and CHANGELOG.zh-TW.md; document breaking migrations. `node quality/release-notes.mjs` derives bilingual release notes from these owners.
+1. Change package.json version; run `npm run distribution:sync`. Move reviewed Unreleased notes to `## [<version>] - YYYY-MM-DD` in both CHANGELOG.md and CHANGELOG.zh-TW.md, leaving an empty Unreleased section. Add the comparison link and explain required migration in an Upgrading paragraph. `node quality/release-notes.mjs` reads the package version and uses `tools/docs.mjs` to derive bilingual notes from these owners; `node tools/docs.mjs release <version>` previews a specific version.
 2. Run tests, distribution:check and both `claude plugin validate --strict .` and `claude plugin validate --strict .claude-plugin/plugin.json`. Review package contents and external changes.
 3. Merge the reviewed, green commit to main. No automatic merge or tag creation.
 4. With release approval, push `v<package-version>` at that commit. Release reuses Windows/Linux tests and the pinned Claude validator, checks tag/version/notes and main ancestry, then creates an experimental GitHub Release with the CLI tarball and SHA256SUMS. Only the release job receives contents:write; ordinary branch pushes never publish. Tags are immutable; a failed release must be investigated before any retry.
@@ -48,3 +48,19 @@ For each release:
 If a version is bad, pin consumers to the last known good tag/SHA and prepare a reviewed patch version. Do not move published tags or automatically delete release assets. GitHub checksums provide integrity checks, not a separate publisher signature. Natural-language skill adoption remains distinct from manifest/install verification.
 
 A release requires clean-clone/install tests, cross-platform Hosted CI, review of current files and Git history, a working private security-report channel and maintainer approval. The workflow runs offline tests on Windows and Ubuntu; verify its actual result before claiming Hosted success. Tags, Releases, registry publication, history rewrites and repository visibility/settings changes need explicit approval.
+
+## Writing docs
+
+Public README, reference and changelog documents use English sources and matching
+Traditional Chinese files named X.zh-TW.md. Contributor/security documents may
+remain English-only. Keep corresponding headings, lists and tables aligned;
+commands and fenced code must be identical. Translate explanations, not schema
+keys or paths. Run `node tools/docs.mjs check`; it checks structure, links, inline
+code and complete fenced-code contents, not translation meaning or command safety.
+Review those manually. The README bilingual conversion is in progress; its missing
+translation currently blocks the full check and must be resolved before release.
+
+Use Keep a Changelog categories Added/Changed/Deprecated/Removed/Fixed/Security,
+translated as 新增/變更/棄用/移除/修正/安全性. Put the user benefit first and explain
+required upgrade steps separately. Update both Unreleased sections when a change
+is made. Do not hand-author a second set of GitHub Release notes or move old tags.

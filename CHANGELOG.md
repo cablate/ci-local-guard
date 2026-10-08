@@ -1,14 +1,21 @@
 # Changelog
 [繁體中文](CHANGELOG.zh-TW.md)
 
+User-facing changes follow Keep a Changelog. package.json owns the version; experimental 0.x minor releases may change behavior.
+
 ## [Unreleased]
+
+### Changed
+- Contributors can detect bilingual structure and executable-example drift with tools/docs.mjs; release notes use the same parser and paired changelogs rather than a second format.
 
 ### Security
 - Failed plan adapters no longer echo raw stdout/stderr into terminal or agent diagnostics. Exit status and failed/blocked reports remain unchanged; inspect the project-owned adapter locally. This is not comprehensive secret redaction or a sandbox.
 
-## 0.1.0 — experimental
+## [0.1.0] - 2026-10-08
 
 Install from GitHub without an npm account. This first experimental release gives agents exact-commit checks, bounded failure evidence and a thin Claude entrypoint. package.json owns the version. Local success is not a complete Hosted CI verdict.
+
+**Upgrading:** Consumers relying on implicit adapters must commit their own .ci-local-guard.json and scripts; there is no fallback. Read reports: standalone exit zero or PASS text is not complete CI verification.
 
 ### Added
 - GitHub Release archives and checksums, fixed-version offline npm-exec installation coverage and tag-gated release checks. npm registry publication is disabled.
@@ -38,6 +45,5 @@ Install from GitHub without an npm account. This first experimental release give
 - Prevent redaction-delayed stdout/stderr tails from splicing ordinary evidence lines.
 - Compare Windows test paths with native filesystem canonicalization.
 
-### Migration
-- Consumers relying on implicit adapters must commit their own .ci-local-guard.json and scripts. There is no compatibility fallback.
-- Standalone execution success can still be incomplete; consumers must read reports rather than interpret exit zero or PASS text as full CI completion.
+[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0

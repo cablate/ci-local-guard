@@ -24,9 +24,9 @@ test('one version owner, explicit release identity and no plugin execution layer
   assert.notEqual(run().status, 0, 'version drift blocks release');
   assert.equal(run(['--write']).status, 0);
   assert.notEqual(run([], 'v0.1.1').status, 0, 'missing versioned notes block tag');
-  writeFileSync(path.join(temp, 'CHANGELOG.md'), '## 0.1.1 — experimental\nRelease notes.\n');
+  writeFileSync(path.join(temp, 'CHANGELOG.md'), '## [0.1.1] - 2026-10-08\nRelease notes.\n');
   assert.notEqual(run([], 'v0.1.1').status, 0, 'missing translated release notes block tag');
-  writeFileSync(path.join(temp, 'CHANGELOG.zh-TW.md'), '## 0.1.1 — experimental\n版本說明。\n');
+  writeFileSync(path.join(temp, 'CHANGELOG.zh-TW.md'), '## [0.1.1] - 2026-10-08\n版本說明。\n');
   assert.equal(run([], 'v0.1.1').status, 0);
   const manifest = JSON.parse(readFileSync(path.join(root, '.claude-plugin/plugin.json')));
   for (const key of ['hooks', 'mcpServers', 'agents', 'dependencies', 'settings']) assert.equal(manifest[key], undefined);
