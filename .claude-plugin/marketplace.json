@@ -1,0 +1,8 @@
+{
+  "name": "ci-local-guard-marketplace",
+  "owner": { "name": "CI Local Guard maintainers" },
+  "metadata": { "description": "Official CI Local Guard integration, using the same CLI core." },
+  "plugins": [
+    { "name": "ci-local-guard", "source": "./", "description": "Project-owned CI preflight and evidence-based diagnosis." }
+  ]
+}

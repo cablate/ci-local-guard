@@ -5,6 +5,9 @@
 Source repository is public under MIT; no versioned Release or registry publication yet. The version is owned by package.json.
 
 ### Added
+- Publishable npm metadata, fixed-version offline npm-exec installation coverage and a tag-gated OIDC release workflow; registry bootstrap remains a maintainer prerequisite.
+- Thin Claude skill plugin bundling the same CLI core, with marketplace metadata and checked version synchronization. No auto hooks, MCP or separate runner.
+- `--version` for installed CLI identity checks.
 - Doctor capability-specific blockers, required inputs and unverified prerequisites in full and compact reports; offline work stays independent of project setup.
 - Failed-check evidence locations from runner-recorded redacted UTF-8 byte ranges and validated receipt IDs, not log-text heuristics.
 - Offline `read-evidence` JSON pages with bounded UTF-8 reads, explicit continuation versions and machine-readable failure reasons; retained evidence includes non-automatic reader arguments.

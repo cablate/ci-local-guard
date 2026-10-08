@@ -34,8 +34,21 @@ CLI verbs/options, descriptor/plan/receipt/report schemas and documented environ
 
 Use this repository's Issues for non-sensitive bugs. Include the package version, Node/Git versions, OS, reproduction, exit code and sanitized report. Remove private paths, tokens and raw logs. Use [GitHub private vulnerability reporting](https://github.com/cablate/ci-local-guard/security/advisories/new) for sensitive findings; see [security reporting guidance](https://github.com/cablate/ci-local-guard/security/policy).
 
-## Releasing (not enabled)
+## Releasing
 
-The only version source is package.json. Keep private: true to block npm publication; this does not control GitHub visibility. No npm release or GitHub Release has been issued. Maintain CHANGELOG/Unreleased; choose the next version before release, and document migration for breaking interfaces. Breaking stable interfaces require a major version. Do not rename the package without an explicit migration decision.
+package.json owns the version. `.claude-plugin/plugin.json` mirrors it because Claude requires its own manifest: after changing the package version, run `npm run distribution:sync`; CI rejects drift. Do not repeat the version in the marketplace entry. No registry publication or GitHub Release has been issued yet. The package is publishable, but that is not proof of publication. Experimental npm releases use `next`, not `latest`.
+
+One-time bootstrap (maintainer account required): authenticate to npm in your own terminal, verify the account and package name, then publish the reviewed tarball with `npm publish <tarball> --ignore-scripts --access public --tag next --registry=https://registry.npmjs.org/`. Never share tokens/OTP or commit npm credentials. Before this first publication, require the same exact-SHA Windows/Linux tests and package checks as subsequent releases. First local publication does not establish Hosted provenance.
+
+Once the package exists, configure its npm Trusted Publisher for GitHub owner `cablate`, repository `ci-local-guard`, workflow filename `release.yml`, allowed action `npm publish`. No environment name is configured by this workflow. This is a one-time account/permission change requiring maintainer authorization; do not substitute a long-lived repository token. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+For each release:
+1. Change package.json version; run `npm run distribution:sync`. Move reviewed Unreleased notes to `## <version> — experimental` in CHANGELOG; document breaking migrations.
+2. Run tests, distribution:check and both `claude plugin validate --strict .` and `claude plugin validate --strict .claude-plugin/plugin.json`. Review package contents and external changes.
+3. Merge the reviewed, green commit to main. Workflow dispatch of Release is a dry-run rehearsal only; it cannot publish. The workflow must exist on the default branch before dispatch is available.
+4. With release approval, push `v<package-version>` at that commit. Release reuses the Windows/Linux tests and pinned Claude validator, checks tag/version/notes and main ancestry, packs once, dry-runs that archive, then publishes the same archive through OIDC with provenance. Ordinary branch pushes do not publish. No automatic main merge, tag creation or GitHub Release creation.
+5. Verify `npm view ci-local-guard@<version> version dist.integrity --registry=https://registry.npmjs.org/`, fresh-cache `npx --yes ci-local-guard@<version> --version` and `--help`, then a real preflight on a trusted fixture. Confirm plugin upgrade sees the new version. Publication failures remain failures: inspect registry state before retrying; never replace an existing version or unpublish automatically.
+
+If a version is bad, pin consumers to the last known good version and prepare a reviewed patch version. Deprecation or dist-tag changes require explicit approval. Registry publication and OIDC cannot be proved by dry-run or package installation tests alone.
 
 A release requires clean-clone/install tests, cross-platform Hosted CI, review of current files and Git history, a working private security-report channel and maintainer approval. The workflow runs offline tests on Windows and Ubuntu; verify its actual result before claiming Hosted success. Tags, Releases, registry publication, history rewrites and repository visibility/settings changes need explicit approval.

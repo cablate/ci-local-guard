@@ -221,7 +221,8 @@ test('candidate README preserves adoption boundaries without internal evidence i
   assert.doesNotMatch(readme, /[A-Z]:[\\/](?:Users|_CabLate_Agents)[\\/]|\b[0-9a-f]{40}\b|\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/i);
   assert.doesNotMatch(readme, /\b(?:run|job|artifact)\s*\**\s*[0-9]{10,}\b/i);
   assert.match(readme, /generic.*不支援 pre-push/);
-  assert.match(readme, /private: true/);
+  assert.match(readme, /npm 發布預設 next channel/);
+  assert.match(readme, /npm registry \*\*尚未發布\*\*/);
   assert.match(readme, /CLI.*不是惡意程式 sandbox|工具不是惡意程式 sandbox/);
   const intro = readme.slice(0, readme.indexOf('<details>'));
   assert.match(intro, /先選你的情境/);
@@ -234,7 +235,7 @@ test('candidate README preserves adoption boundaries without internal evidence i
   assert.equal(validatePreflightConfiguration(descriptor).entrypoint, 'quality/preflight.mjs');
 });
 
-test('private package allowlist excludes evidence/fixtures and installs a usable local bin offline', () => {
+test('public package allowlist excludes evidence/fixtures and installs a usable local bin offline', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'ci-local-guard-package-'));
   const source = fileURLToPath(new URL('../', import.meta.url));
   const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
@@ -251,7 +252,8 @@ test('private package allowlist excludes evidence/fixtures and installs a usable
     mkdirSync(path.join(stage, 'evidence')); writeFileSync(path.join(stage, 'evidence/raw.json'), '{}');
     mkdirSync(path.join(stage, 'tests')); writeFileSync(path.join(stage, 'tests/fixture.json'), '{}');
     const manifest = JSON.parse(readFileSync(path.join(stage, 'package.json'), 'utf8'));
-    assert.equal(manifest.private, true);
+    assert.notEqual(manifest.private, true);
+    assert.deepEqual(manifest.publishConfig, { access: 'public', registry: 'https://registry.npmjs.org/', tag: 'next' });
     assert.equal(manifest.license, 'MIT');
     assert.deepEqual(Object.keys(manifest.dependencies || {}), []);
     assert.ok(['preinstall', 'install', 'postinstall', 'prepare'].every(name => !manifest.scripts?.[name]));
@@ -261,11 +263,18 @@ test('private package allowlist excludes evidence/fixtures and installs a usable
       // Mirror the production adapter's executable fallback; do not skip packaging verification.
       const command = existsSync(npmCli) ? process.execPath : 'npm';
       if (command === 'npm' && process.platform === 'win32') throw new Error('Standard Node/npm distribution required');
-      return execFileSync(command, [...(command === process.execPath ? [npmCli] : []), ...args, '--offline', '--ignore-scripts'], {
+      return execFileSync(command, [...(command === process.execPath ? [npmCli] : []), '--offline', '--ignore-scripts', ...args], {
         cwd, encoding: 'utf8', windowsHide: true, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'],
       });
     };
     const packed = JSON.parse(npm(['pack', '--json', '--pack-destination', root], stage))[0];
+    const isolated = path.join(root, 'npx-consumer'); mkdirSync(isolated);
+    const runNpx = args => npm(['exec', '--yes', '--offline', '--ignore-scripts', '--cache', path.join(root, 'isolated-cache'),
+      '--package', path.join(root, packed.filename), '--', 'ci-local-guard', ...args], isolated);
+    assert.equal(runNpx(['--version']).trim(), manifest.version);
+    assert.match(runNpx(['--help']), /public-experimental/);
+    const page = path.join(isolated, 'check.log'); writeFileSync(page, 'npx evidence');
+    assert.equal(JSON.parse(runNpx(['read-evidence', '--file', page])).text, 'npx evidence');
     assert.ok(packed.files.every(({ path: file }) => ['README.md', 'cli.mjs', 'package.json', 'LICENSE', 'CONTRIBUTING.md', 'CHANGELOG.md'].includes(file) || /^(src\/[^/]+\.mjs|hooks\/pre-(commit|push))$/.test(file)));
     assert.ok(packed.files.some(({ path: file }) => file === 'src/ci-runs.mjs'));
     for (const file of ['LICENSE', 'README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'hooks/pre-commit', 'hooks/pre-push']) {

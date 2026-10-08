@@ -22,3 +22,6 @@ adapter is `quality/preflight.mjs`. `package.json` owns the full test command.
 - Read JSON identity, outcome, failed checks and unverified responsibilities.
   Exit zero/incomplete is not Hosted PASS. No automatic retries, hooks or deployment.
 - Keep consumer policies in consumers. Never add application-specific branches.
+- Distribution owner: package.json version; run `npm run distribution:sync` after
+  a version change and `npm run distribution:check` before release. CONTRIBUTING.md
+  owns release/bootstrap steps. Claude skills call the bundled CLI; do not duplicate it.

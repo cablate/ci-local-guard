@@ -346,6 +346,10 @@ async function prePush(repo) {
 }
 
 async function main() {
+  if (process.argv.length === 3 && process.argv[2] === '--version') {
+    process.stdout.write(toolVersion + '\n');
+    return;
+  }
   const [verb, ...rest] = process.argv.slice(2);
   if (verb === 'pre-push') pushReport = { schemaVersion: 'ci-local-guard/push-report/v1', repo: null, adapter: null,
     outcome: 'blocked', completenessVerified: false, hostedPolicyStatus: 'unverified', updates: [], failure: null,

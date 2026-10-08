@@ -1,7 +1,9 @@
 name: Tests
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -20,3 +22,26 @@ jobs:
         with:
           node-version: '22.23.2'
       - run: node --test tests/*.test.mjs
+      - run: npm run distribution:check
+  plugin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22.23.2'
+      - run: npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin validate --strict .
+      - run: npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin validate --strict .claude-plugin/plugin.json
+      - run: npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin validate --strict skills
+      - name: Isolated plugin installation and bundled CLI
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/guard-claude-config
+        run: |
+          npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin marketplace add "$GITHUB_WORKSPACE"
+          npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin install ci-local-guard@ci-local-guard-marketplace --scope user
+          npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin list --json > "$RUNNER_TEMP/guard-plugins.json"
+          node --input-type=module -e 'import fs from "node:fs"; import path from "node:path"; import assert from "node:assert/strict"; import {execFileSync} from "node:child_process"; const items=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,"guard-plugins.json"))); const p=items.find(x=>x.id==="ci-local-guard@ci-local-guard-marketplace"); assert.ok(p?.enabled); const version=JSON.parse(fs.readFileSync("package.json")).version; assert.equal(execFileSync(process.execPath,[path.join(p.installPath,"cli.mjs"),"--version"],{encoding:"utf8"}).trim(),version); assert.ok(fs.existsSync(path.join(p.installPath,"skills/ci/SKILL.md")));'
+          npm exec --yes --package=@anthropic-ai/claude-code@2.1.293 -- claude plugin uninstall ci-local-guard@ci-local-guard-marketplace --scope user

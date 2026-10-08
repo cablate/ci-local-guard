@@ -2,7 +2,7 @@
 status: public-experimental
 as_of: 2026-10-08
 owner: CI Local Guard maintainers
-next_action: 驗收 capabilities 與 check 日誌位置的 Agent 診斷流程；獨立 consumer 的完整檢查失敗仍由該專案診斷。不增加自動修復層。
+next_action: 完成 npm 首次發布與 trusted publisher 設定；目前 registry 尚未發布，Claude plugin 在開發分支可用本機 marketplace 驗收。
 ---
 
 # CI Local Guard
@@ -15,7 +15,7 @@ next_action: 驗收 capabilities 與 check 日誌位置的 Agent 診斷流程；
 
 **先選你的情境：**本機用 plan／preflight；CI 分析用 collect-run(s) → inspect-runs／audit-runs → compare-runs。兩條路徑獨立，收集 CI 不需要本機 adapter。
 
-**採用底線：**實驗性工具，不代表安全保證。工具不是惡意程式 sandbox；必須信任被執行的專案程式。本機成功不是 Hosted CI 通過；耗時排名不是刪除檢查清單。private: true 僅阻止 npm registry 發布，不影響公開 clone。
+**採用底線：**實驗性工具，不代表安全保證。工具不是惡意程式 sandbox；必須信任被執行的專案程式。本機成功不是 Hosted CI 通過；耗時排名不是刪除檢查清單。npm 發布預設 next channel，不自動升為 latest。
 
 | 你想解決的問題 | 可以先做什麼 | 需要什麼 |
 |---|---|---|
@@ -34,6 +34,31 @@ CI Local Guard is an experimental, MIT-licensed CLI for development agents and h
 Use Node >=22.13.0 <23 and Git. Clone this public repository, then run `node cli.mjs --help`. The offline demo below requires no login or project configuration: it reports 60 seconds of execution wall time versus 80 job-seconds, with `savings: null`. User guidance is primarily Traditional Chinese; CLI help, JSON fields and [contributor guidance](CONTRIBUTING.md) are English. There is no npm registry package or versioned Release yet.
 
 ## 安裝
+
+### CLI 與 Claude plugin：同一份核心
+
+目前 npm registry **尚未發布**，不要直接執行同名的 registry 套件。可先從本分支 clone／打包使用：
+
+```sh
+npm pack --offline --ignore-scripts
+npm exec --yes --offline --ignore-scripts --package="<absolute-tarball-path>" -- ci-local-guard --version
+npm exec --yes --offline --ignore-scripts --package="<absolute-tarball-path>" -- ci-local-guard doctor --check --repo "<project>" --summary
+```
+
+`npm exec` 是 npx 使用的執行機制；此路徑讀取明確本機 tarball，不查找同名 registry 套件。首次公開發布確認後，才使用 `npx --yes ci-local-guard@<已發布版本> ...`；長期專案以 `npm install --save-dev --save-exact ci-local-guard@<已發布版本>` 與 lockfile 固定版本，再用 npm script 調用。不要讓 Agent 默默升到 latest。npm 會使用自身 cache；工具不安裝消費專案依賴。
+
+Claude Code 使用薄 skill plugin，**直接呼叫 plugin 內同一份 CLI**，不依賴 npm 首次發布，也沒有另一套 runner。開發分支先用本機來源安裝（本 repo 路徑，不是 consumer 路徑）：
+
+```sh
+claude plugin marketplace add "<absolute-tool-clone>"
+claude plugin install ci-local-guard@ci-local-guard-marketplace
+```
+
+重新啟動 Claude Code，使用 `/ci-local-guard:ci`；自然語言要求本機 CI 預檢／失敗診斷時也可由 skill 描述觸發，但不保證每次自動選用。Node 與 Git 仍須已安裝。合併到預設分支後，marketplace 來源才可改為 `cablate/ci-local-guard`。
+
+更新：`claude plugin marketplace update ci-local-guard-marketplace`，再 `claude plugin update ci-local-guard@ci-local-guard-marketplace` 並重啟。移除：`claude plugin uninstall ci-local-guard@ci-local-guard-marketplace`。這些命令會變更 Claude 的安裝設定；CI Local 本身不改寫 AGENTS／CLAUDE。plugin 僅一個 skill，無 hooks、MCP、mod runtime、背景服務或遥測。已有的 hooks/ 是 CLI 的選配 Git hook，不是 Claude 自動 hooks。
+
+本機已用 Claude Code 2.1.293、隔離設定目錄完成安裝、skill inventory、快取內 CLI 啟動及移除。這不等於已驗證 Claude Desktop／WSL 或自然語言端到端採用；也不等於已上架官方 marketplace。發布與更新責任見 [CONTRIBUTING](CONTRIBUTING.md#releasing)。
 
 ### Agent 的短調用與接手報告
 
