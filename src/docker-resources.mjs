@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 const labelKey = 'ci-local-guard.run';
@@ -93,6 +93,9 @@ export function createDockerResources({ host, claims = {}, binary = 'docker', ex
               await call([kind, 'rm', ...(kind === 'container' ? ['--force', '--volumes'] : []), row.id], remainingTime());
               report.removed.push({ kind, name });
             } catch {
+              // An interrupted act may still be removing its own resources; gone is gone.
+              const gone = await owned(kind, remainingTime()).then(rows => !rows.some(item => item.id === row.id), () => false);
+              if (gone) { report.removed.push({ kind, name: row.name, alreadyGone: true }); continue; }
               report.reasons.push({ code: 'resource-removal-unconfirmed', kind, name: row.name });
               if (kind === 'container') containerFailure = true;
             }
@@ -104,7 +107,9 @@ export function createDockerResources({ host, claims = {}, binary = 'docker', ex
       }
       for (const kind of kinds) {
         try {
-          report.remaining.push(...(await owned(kind, remainingTime())).map(row => ({ kind, name: row.name })));
+          // One retry: a listing can fail while another client is removing resources.
+          const rows = await owned(kind, remainingTime()).catch(() => owned(kind, remainingTime()));
+          report.remaining.push(...rows.map(row => ({ kind, name: row.name })));
         } catch {
           report.reasons.push({ code: 'resource-verification-unavailable', kind });
         }
@@ -118,7 +123,23 @@ export function createDockerResources({ host, claims = {}, binary = 'docker', ex
 export function dockerCommand(binary, args, timeoutMs) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(path|systemroot|windir|temp|tmp)$/i.test(key)));
   return new Promise((resolve, reject) => {
-    execFile(binary, args, { env, timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024, windowsHide: true, encoding: 'utf8' },
-      (error, stdout) => error ? reject(new Error('Docker command failed')) : resolve(stdout));
+    // Own process group on POSIX: a terminal Ctrl-C during cleanup must not kill the removal
+    // commands. execFile drops `detached`, hence spawn.
+    const child = spawn(binary, args, { env, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    let stdout = '';
+    let settled = false;
+    const fail = () => {
+      if (settled) return;
+      settled = true; clearTimeout(timer); child.kill('SIGKILL');
+      reject(new Error('Docker command failed'));
+    };
+    const timer = setTimeout(fail, timeoutMs);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 16 * 1024 * 1024) fail(); });
+    child.on('error', fail);
+    child.on('close', code => {
+      if (code !== 0) return fail();
+      if (!settled) { settled = true; clearTimeout(timer); resolve(stdout); }
+    });
   });
 }

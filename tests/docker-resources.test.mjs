@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDockerResources } from '../src/docker-resources.mjs';
+import { spawn } from 'node:child_process';
+import { createDockerResources, dockerCommand } from '../src/docker-resources.mjs';
 
 const host = 'unix:///var/run/docker.sock';
 // A fake daemon: resources are { kind, id, name, labels }.
@@ -86,6 +87,21 @@ test('Docker failure stays incomplete and raw diagnostics do not leak', async ()
   assert.equal((await f.scope.cleanup({ producerStopped: true })).outcome, 'incomplete');
 });
 
+test('a resource removed concurrently counts as gone; one failed listing is retried', async () => {
+  const f = fixture(claims); await f.scope.prepare();
+  f.add('container', 'act-job', f.own); f.add('network', 'act-job-net');
+  // An interrupted act removes its network while our rm is in flight.
+  let listings = 0;
+  f.fail(args => {
+    if (args[0] === 'network' && args[1] === 'rm') { f.resources.splice(f.resources.findIndex(r => r.kind === 'network'), 1); return true; }
+    return args[0] === 'volume' && args[1] === 'ls' && ++listings === 2;
+  });
+  const report = await f.scope.cleanup({ producerStopped: true });
+  assert.equal(report.outcome, 'cleaned');
+  assert.deepEqual(report.removed, [{ kind: 'container', name: 'act-job' }, { kind: 'network', name: 'act-job-net', alreadyGone: true }]);
+  assert.equal(f.resources.length, 0);
+});
+
 test('invalid inventories, claims and options fail closed', async () => {
   for (const value of ['--all x', 'a b c', '../outside x']) {
     const scope = createDockerResources({ host, execute: async () => value });
@@ -109,4 +125,29 @@ test('overall deadline prevents starting further Docker calls', async () => {
   const report = await scope.cleanup({ producerStopped: true, timeoutMs: 5 });
   assert.equal(report.outcome, 'incomplete');
   assert.ok(report.reasons.some(r => r.code === 'resource-verification-unavailable'));
+});
+
+test('dockerCommand returns stdout, and rejects a failing or overdue command', async () => {
+  const node = process.execPath;
+  assert.equal(await dockerCommand(node, ['-e', 'process.stdout.write("ok")'], 10000), 'ok');
+  await assert.rejects(dockerCommand(node, ['-e', 'process.exit(3)'], 10000), /Docker command failed/);
+  await assert.rejects(dockerCommand(node, ['-e', 'setTimeout(() => {}, 10000)'], 200), /Docker command failed/);
+});
+
+test('a Ctrl-C to the foreground process group does not kill a running Docker command', { skip: process.platform === 'win32' }, async () => {
+  // The parent ignores SIGINT, like replay during cleanup; the "docker" command is a slow node script.
+  const moduleUrl = new URL('../src/docker-resources.mjs', import.meta.url).href;
+  const script = `process.on("SIGINT", () => {});
+    const { dockerCommand } = await import(${JSON.stringify(moduleUrl)});
+    process.stdout.write("started\\n");
+    dockerCommand(process.execPath, ["-e", "setTimeout(() => process.stdout.write(\\"removed\\"), 500)"], 10000)
+      .then(out => process.stdout.write(out), () => process.stdout.write("killed"));`;
+  const parent = spawn(process.execPath, ['--input-type=module', '-e', script], { detached: true, stdio: ['ignore', 'pipe', 'inherit'] });
+  let out = '';
+  parent.stdout.on('data', chunk => {
+    out += chunk;
+    if (out === 'started\n') setTimeout(() => process.kill(-parent.pid, 'SIGINT'), 100);
+  });
+  await new Promise(resolve => parent.on('close', resolve));
+  assert.equal(out, 'started\nremoved');
 });
