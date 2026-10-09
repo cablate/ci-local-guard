@@ -5,6 +5,12 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-09
+
+This update lets your AI catch CI failures before pushing. New ci commands read your GitHub workflows directly, replay the Linux jobs locally with act, point to the failing step and test when a GitHub run fails, and show whether a workflow change makes CI check less. No adapter needed.
+
+**Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.2.0. Existing commands, configuration and receipts are unchanged and need no migration. Replaying jobs needs act 0.2.89 and Docker with Linux containers.
+
 ### Added
 - Added ci verify: checks the commit you are about to push. It decides which workflows the push or pull request triggers, runs the workflow static check and replays the triggered Linux jobs locally, then lists what is expected to fail, what passed locally and what only GitHub can verify.
 - Added ci replay: runs one job of a committed workflow in local Linux containers with act 0.2.89, reports the failing step, command, failed tests and log location, and removes only the containers, networks and volumes it created.
@@ -68,6 +74,7 @@ Install from GitHub without an npm account. The first experimental release bring
 - Kept stdout/stderr log lines separate when redaction delays their final bytes.
 - Used native path normalization for Windows test comparisons.
 
-[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...HEAD
+[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0

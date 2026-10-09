@@ -5,7 +5,7 @@ This guide is for connecting a project, reading results and maintaining an insta
 
 The examples use placeholders such as <project> and <commit>. Replace them with the project path and Git revision you intend to check. Examples beginning with ci-local-guard assume an installed command; with a source clone, use node followed by the full path to cli.mjs.
 
-- [Understand, check and replay CI](#understand-check-and-replay-ci-unreleased)
+- [Understand, check and replay CI](#understand-check-and-replay-ci)
 - [Connect a project](#connect-a-project)
 - [Read a report](#read-a-report)
 - [Read failure logs](#read-failure-logs)
@@ -13,9 +13,9 @@ The examples use placeholders such as <project> and <commit>. Replace them with 
 - [Update or remove the tool](#updating-disabling-and-removing)
 - [Troubleshoot](#troubleshooting)
 
-## Understand, check and replay CI (unreleased)
+## Understand, check and replay CI
 
-These commands are in the development source, not in v0.1.1. None of them needs a project adapter. A typical session for an AI agent:
+These commands were added in v0.2.0. None of them needs a project adapter. A typical session for an AI agent:
 
 1. Run ci discover to learn what CI runs and what can run locally.
 2. While editing, run the CI commands it lists directly in the working tree.

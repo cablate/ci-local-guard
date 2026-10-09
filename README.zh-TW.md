@@ -32,12 +32,12 @@ Guard 和原本的 CI 搭配使用：能在本機跑的檢查先跑，需要雲�
 需要 Node 22（>=22.13.0 <23）和 Git。找一個獨立目錄下載工具：
 
 ```sh
-git clone --branch v0.1.1 --depth 1 https://github.com/cablate/ci-local-guard.git
+git clone --branch v0.2.0 --depth 1 https://github.com/cablate/ci-local-guard.git
 node ci-local-guard/cli.mjs --version
 node ci-local-guard/cli.mjs --help
 ```
 
-版本指令應顯示 0.1.1。裝好一份，就能給多個專案使用。
+版本指令應顯示 0.2.0。裝好一份，就能給多個專案使用。
 
 不需要 npm 帳號，也可以從 [GitHub Releases](https://github.com/cablate/ci-local-guard/releases) 下載。這個工具目前透過 GitHub 提供，沒有發布到 npm registry。
 
@@ -79,9 +79,9 @@ node "<tool-directory>/cli.mjs" preflight --repo "<consumer-path>" --base <base>
 
 如果結果是 incomplete，意思是還有不在這次本機檢查範圍裡的工作，例如只在 CI 跑的瀏覽器測試。各種結果怎麼處理，見[結果說明](docs/reference.zh-TW.md)。
 
-## 推送前抓出 CI 失敗（開發版）
+## 推送前抓出 CI 失敗
 
-v0.1.1 尚未包含。這些命令不需要 adapter，直接讀取你的 GitHub workflows。重播 job 需要 [act](https://github.com/nektos/act) 0.2.89，以及能跑 Linux 容器的 Docker。
+v0.2.0 新增。這些命令不需要 adapter，直接讀取你的 GitHub workflows。重播 job 需要 [act](https://github.com/nektos/act) 0.2.89，以及能跑 Linux 容器的 Docker。
 
 ```sh
 node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
@@ -90,7 +90,7 @@ node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
 node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --summary
 ```
 
-discover 告訴 AI：CI 會跑哪些命令、哪些 job 能在本機跑、哪些只有 GitHub 能檢查。verify 拿你準備推送的 commit，判斷它會觸發哪些 workflows，再在本機容器跑 Linux jobs。它會回報預期失敗的部分（附失敗的 step、命令與 log 位置），以及仍需 GitHub 驗證的部分，例如 Windows job 或用到 secrets 的 job。如果 GitHub 上的 run 仍然失敗，locate 會找出 HEAD commit 的 runs，指出失敗的 job、step 與測試（附檔案與行號），並把該 step 的 log 存在本機，讓 AI 只讀需要的部分。修改 workflow 後，diff 會告訴你：同樣的變更下，CI 是否檢查得比較少，例如少了 matrix leg、篩選變窄或刪了命令。細節見[參考手冊](docs/reference.zh-TW.md#看懂檢查與重播-ci未發布)。
+discover 告訴 AI：CI 會跑哪些命令、哪些 job 能在本機跑、哪些只有 GitHub 能檢查。verify 拿你準備推送的 commit，判斷它會觸發哪些 workflows，再在本機容器跑 Linux jobs。它會回報預期失敗的部分（附失敗的 step、命令與 log 位置），以及仍需 GitHub 驗證的部分，例如 Windows job 或用到 secrets 的 job。如果 GitHub 上的 run 仍然失敗，locate 會找出 HEAD commit 的 runs，指出失敗的 job、step 與測試（附檔案與行號），並把該 step 的 log 存在本機，讓 AI 只讀需要的部分。修改 workflow 後，diff 會告訴你：同樣的變更下，CI 是否檢查得比較少，例如少了 matrix leg、篩選變窄或刪了命令。細節見[參考手冊](docs/reference.zh-TW.md#看懂檢查與重播-ci)。
 
 ## 想知道 CI 為什麼慢？
 
@@ -131,8 +131,8 @@ Guard 會用你的本機權限執行專案腳本，請用在你信任的專案�
 
 ## 目前進度
 
-[v0.1.1](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.1) 是實驗版。[Windows 與 Ubuntu 測試](https://github.com/cablate/ci-local-guard/actions/runs/37725011025)已通過，也實測了發布壓縮檔，以及 Claude Code 2.1.293 plugin 的安裝、更新和移除。macOS、arm64、Claude Desktop、WSL 尚未測試。
+[v0.2.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.2.0) 是實驗版。[Windows 與 Ubuntu 測試](https://github.com/cablate/ci-local-guard/actions/runs/37925557268)已通過。發布壓縮檔，以及 Claude Code 2.1.293 plugin 的安裝、更新和移除，最近一次是在 v0.1.1 實測。macOS、arm64、Claude Desktop、WSL 尚未測試。
 
-我們也用 Guard 檢查這個 repo。尚未發布的開發版原始碼加入了推送前檢查：ci discover、ci check、ci replay、ci verify，量測失敗與慢 job 代價的 ci history，定位 GitHub 失敗 run 的 ci locate，以及檢查 workflow 修改的 ci diff。目前在 Windows 搭配 Docker Desktop（Linux 容器）上實測過。v0.1.1 尚未包含這些命令。
+我們也用 Guard 檢查這個 repo。v0.2.0 加入了推送前檢查：ci discover、ci check、ci replay、ci verify，量測失敗與慢 job 代價的 ci history，定位 GitHub 失敗 run 的 ci locate，以及檢查 workflow 修改的 ci diff。重播已在 Windows 搭配 Docker Desktop（Linux 容器）實測，也實測過讓 Guard 本身在 Linux 容器裡操作同一個 Docker engine，包含 Ctrl-C 後的清理。原生 Linux 機器與 macOS 尚未測試。
 
 哪裡看不懂或用不起來？歡迎[開 issue](https://github.com/cablate/ci-local-guard/issues)，附上工具版本、作業系統和簡單的重現例子。

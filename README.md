@@ -32,12 +32,12 @@ Your AI will need to read project files and run Node commands. The [AI entry poi
 You need Node 22 (>=22.13.0 <23) and Git. Clone the tool into its own directory:
 
 ```sh
-git clone --branch v0.1.1 --depth 1 https://github.com/cablate/ci-local-guard.git
+git clone --branch v0.2.0 --depth 1 https://github.com/cablate/ci-local-guard.git
 node ci-local-guard/cli.mjs --version
 node ci-local-guard/cli.mjs --help
 ```
 
-The version command should print 0.1.1. You can share this installation across projects.
+The version command should print 0.2.0. You can share this installation across projects.
 
 No npm account is needed. Downloads are also available in [GitHub Releases](https://github.com/cablate/ci-local-guard/releases). This tool is distributed through GitHub, not the npm registry.
 
@@ -79,9 +79,9 @@ Replace the placeholders with actual paths and commits. The output directory mus
 
 An incomplete result means some work is still outside the local check—for example, a browser test that only runs in CI. The [result guide](docs/reference.md) explains how to handle each outcome.
 
-## Catch CI failures before pushing (development source)
+## Catch CI failures before pushing
 
-Not in v0.1.1 yet. These commands need no adapter; they read your GitHub workflows directly. Replaying jobs needs [act](https://github.com/nektos/act) 0.2.89 and Docker with Linux containers.
+Added in v0.2.0. These commands need no adapter; they read your GitHub workflows directly. Replaying jobs needs [act](https://github.com/nektos/act) 0.2.89 and Docker with Linux containers.
 
 ```sh
 node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
@@ -90,7 +90,7 @@ node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
 node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --summary
 ```
 
-discover tells your AI which commands CI runs, which jobs can run locally and which only GitHub can check. verify takes the commit you are about to push, works out which workflows it triggers, and runs the Linux jobs in local containers. It reports what is expected to fail, with the failing step, command and log location, and what still needs GitHub, such as Windows jobs or jobs that use secrets. If a GitHub run still fails, locate finds the runs for your HEAD commit and points to the failed job, step and tests with their file and line. It saves that step's log locally so the AI reads only the part it needs. After editing a workflow, diff shows whether CI now checks less for the same changes, such as a dropped matrix leg, a narrower filter or a deleted command. Details are in the [reference](docs/reference.md#understand-check-and-replay-ci-unreleased).
+discover tells your AI which commands CI runs, which jobs can run locally and which only GitHub can check. verify takes the commit you are about to push, works out which workflows it triggers, and runs the Linux jobs in local containers. It reports what is expected to fail, with the failing step, command and log location, and what still needs GitHub, such as Windows jobs or jobs that use secrets. If a GitHub run still fails, locate finds the runs for your HEAD commit and points to the failed job, step and tests with their file and line. It saves that step's log locally so the AI reads only the part it needs. After editing a workflow, diff shows whether CI now checks less for the same changes, such as a dropped matrix leg, a narrower filter or a deleted command. Details are in the [reference](docs/reference.md#understand-check-and-replay-ci).
 
 ## Investigate slow CI
 
@@ -131,8 +131,8 @@ Guard runs your project's scripts with your local permissions, so use it with pr
 
 ## Project status
 
-[v0.1.1](https://github.com/cablate/ci-local-guard/releases/tag/v0.1.1) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/37725011025) pass, and we've tested the release archive and Claude Code 2.1.293 plugin installation, upgrade and removal. macOS, arm64, Claude Desktop and WSL have not been tested.
+[v0.2.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.2.0) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/37925557268) pass. The release archive and Claude Code 2.1.293 plugin installation, upgrade and removal were last tested on v0.1.1. macOS, arm64, Claude Desktop and WSL have not been tested.
 
-We use Guard to check this repository too. The unreleased development source adds pre-push checking with ci discover, ci check, ci replay and ci verify, ci history for what failures and slow jobs cost, ci locate for failed GitHub runs, and ci diff for workflow changes. It has been tested so far on Windows with Docker Desktop (Linux containers). These commands are not included in v0.1.1.
+We use Guard to check this repository too. v0.2.0 adds pre-push checking with ci discover, ci check, ci replay and ci verify, ci history for what failures and slow jobs cost, ci locate for failed GitHub runs, and ci diff for workflow changes. Replay has been tested on Windows with Docker Desktop (Linux containers), and with Guard itself running in a Linux container against the same Docker engine, including Ctrl-C cleanup. A native Linux machine and macOS have not been tested.
 
 Found something confusing or broken? [Open an issue](https://github.com/cablate/ci-local-guard/issues) with your tool version, operating system and a small example.

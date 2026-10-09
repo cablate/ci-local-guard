@@ -5,6 +5,12 @@
 
 ## [未發布]
 
+## [0.2.0] - 2026-10-09
+
+這次更新讓 AI 在推送前就能抓出 CI 失敗。新的 ci 命令直接讀取 GitHub workflows，用 act 在本機重播 Linux jobs；GitHub run 失敗時指出失敗的 step 與測試；修改 workflow 時告訴你 CI 是否檢查得比較少。不需要 adapter。
+
+**升級：** 更新 GitHub 壓縮檔／clone 或 Claude marketplace plugin，確認 --version 顯示 0.2.0。既有命令、設定與檢查紀錄不變，不用遷移。重播 job 需要 act 0.2.89，以及能跑 Linux 容器的 Docker。
+
 ### 新增
 - 新增 ci verify：檢查準備推送的 commit。它判斷這次 push 或 pull request 會觸發哪些 workflows，執行 workflow 靜態檢查並在本機重播會被觸發的 Linux jobs，再列出預期失敗、本機已通過，以及只有 GitHub 能驗證的部分。
 - 新增 ci replay：用 act 0.2.89 在本機 Linux 容器執行已提交 workflow 的一個 job，回報失敗的 step、命令、失敗測試與 log 位置，並只移除它自己建立的 containers、networks、volumes。
@@ -68,6 +74,7 @@
 - 遮罩延遲處理最後幾個字元時，stdout/stderr 日誌行仍保持分開。
 - Windows 測試比較使用系統原生的路徑正規化。
 
-[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...HEAD
+[unreleased]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cablate/ci-local-guard/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0

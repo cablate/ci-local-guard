@@ -38,7 +38,7 @@ test('one version owner, explicit release identity and no plugin execution layer
 test('release notes derive both languages and workflow cannot publish npm', () => {
   const result = spawnSync(process.execPath, ['quality/release-notes.mjs'], { cwd: root, encoding: 'utf8', timeout: 10000 });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /This update makes it easier to get your AI started with Guard/);
+  assert.match(result.stdout, /\*\*Upgrading:\*\*/);
   assert.match(result.stdout, /## 繁體中文/);
   const workflow = readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8');
   assert.doesNotMatch(workflow, /npm publish|id-token:|NPM_TOKEN|NODE_AUTH_TOKEN/);
