@@ -72,6 +72,7 @@ export function parseActLog(file) {
   const legs = new Map();
   const runner = [];
   const platformSkips = [];
+  let last = null;
   let offset = 0;
   while (offset < buffer.length) {
     let end = buffer.indexOf(10, offset);
@@ -99,6 +100,7 @@ export function parseActLog(file) {
       stage: entry.stage ?? null, result: null, startByte: start, endByte: offset, tail: [], failedTests: [] });
     const step = leg.steps.get(stepKey);
     step.endByte = offset;
+    if (typeof entry.time === 'string') last = { job: leg.job, step: step.name, at: entry.time };
     if (typeof entry.stepResult === 'string') step.result = entry.stepResult;
     if (entry.raw_output && typeof entry.msg === 'string') {
       for (const text of entry.msg.split(/\r?\n/).filter(Boolean)) {
@@ -110,7 +112,7 @@ export function parseActLog(file) {
       }
     }
   }
-  return { legs: [...legs.values()].map(leg => ({ ...leg, steps: [...leg.steps.values()] })), runner, platformSkips, size };
+  return { legs: [...legs.values()].map(leg => ({ ...leg, steps: [...leg.steps.values()] })), runner, platformSkips, size, last };
 }
 
 function eventPayload(event, { sha, ref }) {
@@ -275,7 +277,7 @@ export async function replayCi(options, deps = {}) {
     if (!toolcacheBefore && (await scope.present('volume', ['act-toolcache']).catch(() => [])).length) {
       report.resources.shared.push({ kind: 'volume', name: 'act-toolcache', createdByThisRun: true, policy: 'retained-shared-act-tool-cache' });
     } else if (toolcacheBefore) report.resources.shared.push({ kind: 'volume', name: 'act-toolcache', createdByThisRun: false, policy: 'reused-shared-act-tool-cache' });
-    report.execution = execution;
+    report.execution = { ...execution, endedAt: new Date().toISOString() };
     if (logFile) {
       report.evidence.push({ id: 'replay-log', kind: 'log', path: logFile,
         reader: { command: 'read-evidence', args: ['--file', logFile], automatic: false } });
@@ -308,6 +310,11 @@ function summarize(report, parsed, workflow, logFile) {
         evidence: { id: 'replay-log', startByte: step.startByte, endByte: step.endByte,
           reader: { command: 'read-evidence', args: readerArgs(logFile, step.startByte, step.endByte), automatic: false } } });
     }
+  }
+  // Where a stopped run was: the last step that printed anything, and when.
+  if (parsed.last && report.execution) {
+    const silent = Math.round((Date.parse(report.execution.endedAt) - Date.parse(parsed.last.at)) / 1000);
+    report.execution.lastActivity = { ...parsed.last, ...(Number.isFinite(silent) && silent >= 0 ? { silentSeconds: silent } : {}) };
   }
   if (parsed.platformSkips.length) report.coverage.runnerMessages = parsed.platformSkips.slice(0, 5);
   if (report.outcome !== 'passed') report.runnerOutput = parsed.runner.slice(-EXCERPT_LINES);
@@ -350,6 +357,9 @@ function decide(report, opts, rerun) {
     report.nextActions.push({ kind: 'confirm-on-hosted-ci', reason: 'local replay is not a hosted result', automatic: false });
   } else if (interrupted) {
     report.nextActions.push({ kind: 'read-replay-log-tail', reason: execution.causes.join(','), automatic: false });
+    const stalled = execution.lastActivity;
+    if (stalled?.silentSeconds >= 120) report.nextActions.push({ kind: 'inspect-stalled-step', job: stalled.job, step: stalled.step, silentSeconds: stalled.silentSeconds,
+      reason: 'no output for minutes before the stop; often a slow or stuck download in a setup step. Tool caches are kept, so a retry may skip finished downloads', automatic: false });
     if (execution.causes.includes('execution-timeout')) report.nextActions.push({ kind: 'replay-with-longer-timeout', ...rerun({ timeout: String(Math.min(99999, Number(opts.timeout || 900) * 2)) }) });
   } else {
     report.nextActions.push({ kind: 'read-runner-output', reason: 'act stopped before reporting a job result', automatic: false });

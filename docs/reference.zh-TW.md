@@ -155,7 +155,7 @@ node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/
 - 不掛載 Docker socket、關閉 cache server，job 容器以 init 程序啟動，孤兒程序會像在 Hosted VM 上一樣被回收。
 - image、預裝工具與權限都和 GitHub Hosted runner 不同。job 用到的 actions 第一次可能需要下載。
 
-執行前，Guard 會算出 act 這些 jobs 會用到的所有 container、network、volume 名稱，只要有任何一個已存在就停止。結束後（包含逾時或 Ctrl-C），只移除標上本次 label 的容器、名稱完全相符的資源，以及這些容器的匿名 volumes。不做 prune，也不用前綴比對。act 共用的 act-toolcache volume 與下載的 images 會保留，列在 resources.shared。若無法確認 act 已終止，不會刪任何東西，結果為 incomplete。
+執行前，Guard 會算出 act 這些 jobs 會用到的所有 container、network、volume 名稱，只要有任何一個已存在就停止。結束後（包含逾時或 Ctrl-C），只移除標上本次 label 的容器、名稱完全相符的資源，以及這些容器的匿名 volumes。不做 prune，也不用前綴比對。act 共用的 act-toolcache volume 與下載的 images 會保留，列在 resources.shared。若無法確認 act 已終止，不會刪任何東西，結果為 incomplete。如果 Guard 程序本身被強制結束，資源會留下；它們都標有 ci-local-guard.run label，下次重播同一個 job 時會以 docker-resource-collision 停止並列出這些資源。setup action 安裝的工具（例如 Python、Java）保存在 act-toolcache，只有第一次重播需要下載。執行中斷時，execution.lastActivity 會指出最後有輸出的 step，以及它已經多久沒有輸出。
 
 | 結果 | 意義 | Exit |
 |---|---|---|

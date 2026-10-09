@@ -154,7 +154,8 @@ test('a timeout is incomplete, and leftover containers of this run are removed w
   const x = deps(f, d, { execute: async logFile => {
     // Service-style leftovers without our label, claimed by exact act name.
     d.resources.push({ kind: 'container', name: JCN, id: 'leftover' }, { kind: 'volume', name: `${JCN}-env`, id: `${JCN}-env` });
-    writeFileSync(logFile, line({ msg: 'running', stage: 'Main', step: 's', stepID: ['1'] }));
+    writeFileSync(logFile, line({ msg: 'Download from https://example.test/tool.tgz', stage: 'Main', step: 'actions/setup-python@v5', stepID: ['1'],
+      time: new Date(Date.now() - 600000).toISOString() }));
     throw Object.assign(new Error('timeout'), { logFile, durationMs: 1000,
       executionFailure: { exitCode: null, causes: ['execution-timeout', 'process-terminated'] } });
   } });
@@ -164,6 +165,9 @@ test('a timeout is incomplete, and leftover containers of this run are removed w
   assert.deepEqual(d.resources.map(r => r.name), ['unrelated-sentinel']);
   const longer = report.nextActions.find(a => a.kind === 'replay-with-longer-timeout');
   assert.equal(longer.args[longer.args.indexOf('--timeout') + 1], '120');
+  const stalled = report.nextActions.find(a => a.kind === 'inspect-stalled-step');
+  assert.equal(stalled.step, 'actions/setup-python@v5');
+  assert.ok(stalled.silentSeconds >= 590, 'the step was silent for ten minutes before the stop');
 });
 
 test('unconfirmed termination skips Docker cleanup and is never success', async t => {
