@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { diffCi, diffOptions } from '../src/ci-diff.mjs';
 
 const BASE = `name: CI
@@ -44,23 +45,30 @@ const variants = {
   'condition expression': s => s.replace('  lint:\n    runs-on', "  lint:\n    if: github.actor != 'bot'\n    runs-on"),
 };
 
-function repoWith(edit) {
+function repoWith(edit, workflow = BASE, files = ['docs/guide.md', 'index.js']) {
   const repo = mkdtempSync(path.join(os.tmpdir(), 'guard-diff-'));
   const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { encoding: 'utf8' });
   git('init', '-q', '-b', 'main');
   mkdirSync(path.join(repo, '.github', 'workflows'), { recursive: true });
-  mkdirSync(path.join(repo, 'docs'));
-  writeFileSync(path.join(repo, 'docs', 'guide.md'), 'x');
-  writeFileSync(path.join(repo, 'index.js'), 'x');
-  writeFileSync(path.join(repo, '.github', 'workflows', 'ci.yml'), BASE);
+  for (const file of files) {
+    mkdirSync(path.join(repo, path.dirname(file)), { recursive: true });
+    writeFileSync(path.join(repo, file), 'x');
+  }
+  writeFileSync(path.join(repo, '.github', 'workflows', 'ci.yml'), workflow);
   git('add', '.'); git('commit', '-qm', 'base');
-  writeFileSync(path.join(repo, '.github', 'workflows', 'ci.yml'), edit(BASE));
+  writeFileSync(path.join(repo, '.github', 'workflows', 'ci.yml'), edit(workflow));
   git('commit', '-qam', 'edit');
   return repo;
 }
 
 async function diff(name) {
   const repo = repoWith(variants[name]);
+  try { return await diffCi(diffOptions(['--repo', repo, '--base', 'HEAD~1', '--head', 'HEAD'])); }
+  finally { rmSync(repo, { recursive: true, force: true }); }
+}
+
+async function diffEdit(workflow, edit, files) {
+  const repo = repoWith(edit, workflow, files);
   try { return await diffCi(diffOptions(['--repo', repo, '--base', 'HEAD~1', '--head', 'HEAD'])); }
   finally { rmSync(repo, { recursive: true, force: true }); }
 }
@@ -101,7 +109,86 @@ test('an unevaluated condition is undetermined, never equivalent', async () => {
   assert.deepEqual(kinds(report, 'unknown'), ['job-condition-changed']);
 });
 
+// Neither the default branch nor the probe branch matches branches: [dev], so
+// paths filters scoped to such a workflow need a probe on the named branch.
+const devWorkflow = filter => `name: CI
+on:
+  push:
+    branches: [dev]
+    ${filter}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+`;
+const devFiles = ['CHANGELOG.md', 'src/app.js', 'docs/guide.md'];
+
+test('paths filters on a custom branch are probed on that branch', async () => {
+  const narrowed = await diffEdit(devWorkflow("paths: ['src/**', 'CHANGELOG.md']"),
+    s => s.replace("'src/**', 'CHANGELOG.md'", "'src/**'"), devFiles);
+  const n = narrowed.changes.find(c => c.kind === 'trigger-narrowed');
+  assert.deepEqual([n.scenario, n.files, n.examples], ['push to dev', 1, ['CHANGELOG.md']],
+    'dropping a path stops CHANGELOG.md pushes to dev from triggering');
+
+  const widened = await diffEdit(devWorkflow("paths-ignore: ['docs/**', 'CHANGELOG.md']"),
+    s => s.replace("'docs/**', 'CHANGELOG.md'", "'docs/**'"), devFiles);
+  const w = widened.changes.find(c => c.kind === 'trigger-widened');
+  assert.deepEqual([w.scenario, w.files, w.examples], ['push to dev', 1, ['CHANGELOG.md']],
+    'dropping a paths-ignore entry starts triggering CHANGELOG.md pushes to dev');
+  assert.equal(widened.outcome, 'no-reduction');
+});
+
+test('when both usual branch probes are ignored, a representative that is not ignored is probed', async () => {
+  const ignored = `name: CI
+on:
+  push:
+    branches-ignore: ['main', 'guard-probe/**']
+    paths: ['src/**', 'CHANGELOG.md']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+`;
+  const report = await diffEdit(ignored, s => s.replace("'src/**', 'CHANGELOG.md'", "'src/**'"), devFiles);
+  const n = report.changes.find(c => c.kind === 'trigger-narrowed');
+  assert.equal(n.scenario, 'push to guard-probe-branch', 'main and guard-probe/feature are both ignored');
+  assert.deepEqual(n.examples, ['CHANGELOG.md']);
+});
+
+test('tag probes cover a name that the built-in probe tag does not reach', async () => {
+  const report = await diffEdit(`name: CI
+on:
+  push:
+    tags-ignore: ['v*']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+`, s => s.replace("tags-ignore: ['v*']", "tags: ['v*']"), []);
+  const n = report.changes.find(c => c.kind === 'trigger-narrowed');
+  assert.deepEqual([n.scenario, n.files], ['push of tag guard-probe-tag', 'every tag push'],
+    'the built-in v0.0.0-guard-probe matches v* on both sides; only the representative sees the switch to an include list');
+});
+
 test('options fail closed', () => {
   assert.throws(() => diffOptions(['--base']), /invalid-diff-options/);
   assert.throws(() => diffOptions(['--x', 'y']), /invalid-diff-options/);
+  assert.deepEqual(diffOptions(['--json']), { summary: false, json: true }, '--json is accepted like the other ci commands');
+  assert.throws(() => diffOptions(['--bogus', 'y']),
+    error => error.diffCode === 'invalid-diff-options' && error.detail === '--bogus',
+    'the rejection names the unsupported option in its detail');
+});
+
+test('a blocked diff option names the unsupported flag in the CLI report', t => {
+  const repo = repoWith(workflow => `${workflow}# probe\n`, 'on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps: [{run: npm test}]\n', ['index.js']);
+  const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [cli, 'ci', 'diff', '--repo', repo, '--bogus'], { encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.stderr, '');
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.outcome, 'blocked');
+  assert.equal(report.issues[0].code, 'invalid-diff-options');
+  assert.equal(report.issues[0].detail, '--bogus');
 });

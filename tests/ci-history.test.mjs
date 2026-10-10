@@ -17,6 +17,15 @@ test('wait time ends at the last job; billable minutes round each job up', () =>
   assert.equal(m.timingComplete, true);
 });
 
+test('skipped jobs are not billed and are counted separately', () => {
+  const neverStarted = { name: 'gate', conclusion: 'skipped', labels: [], steps: [] };
+  const m = measure(entry(1, 1, 'success', [job('build', 'success', 0, 60), job('matrix (skip-me)', 'skipped', 0, 0), neverStarted]));
+  assert.equal(m.billableMinutes, 1, 'GitHub does not bill skipped or never-started jobs');
+  assert.equal(m.skippedJobs, 2);
+  assert.equal(m.jobSeconds, 60, 'a skipped job contributes no seconds');
+  assert.equal(m.timingComplete, false, 'the never-started job still has no timing');
+});
+
 const workflowPath = '.github/workflows/ci.yml';
 const names = new Map([['test (ubuntu-latest)', { job: 'test', matrix: { os: 'ubuntu-latest' } }],
   ['test (windows-latest)', { job: 'test', matrix: { os: 'windows-latest' } }], ['build', { job: 'build', matrix: {} }]]);
@@ -97,8 +106,18 @@ test('options and inputs fail closed with specific codes', async () => {
   const invalid = await historyCi(opts, { discover, readExport: () => ({ schemaVersion: 'other' }) });
   assert.deepEqual(invalid.issues, [{ code: 'invalid-export' }]);
   const offline = await historyCi(opts, { discover, readExport: () => ({ schemaVersion: 'ci-local-guard/github-export/v1',
-    runs: [entry(1, 1, 'success', [job('a', 'success', 0, 30)]), entry(2, 1, 'failure', [job('a', 'failure', 0, 90, ['windows-latest'], 'npm test')])] }) });
+    runs: [entry(1, 1, 'success', [job('a', 'success', 0, 30)]), entry(2, 1, 'failure', [job('a', 'failure', 0, 90, ['windows-latest'], 'npm test'), job('b', 'skipped', 0, 0)])] }) });
   assert.equal(offline.outcome, 'measured');
   assert.deepEqual([offline.failures.count, offline.failures.billableMinutes, offline.baseline.success.waitSeconds.median], [1, 2, 30]);
+  assert.equal(offline.failures.attempts[0].skippedJobs, 1);
   assert.equal(offline.nextActions[0].kind, 'classify-failures-locally');
+});
+
+test('skipped jobs stay out of per-job timing statistics', async () => {
+  const discover = () => ({ identity: { repo: '.', repository: 'o/r' }, workflows: [] });
+  const report = await historyCi(historyOptions(['--workflow', 'ci.yml', '--input', 'x.json']), { discover,
+    readExport: () => ({ schemaVersion: 'ci-local-guard/github-export/v1',
+      runs: [entry(1, 1, 'success', [job('a', 'success', 0, 30)]), entry(2, 1, 'success', [job('a', 'skipped', 0, 0)])] }) });
+  const a = report.baseline.jobs.find(item => item.name === 'a');
+  assert.deepEqual([a.runs, a.medianSeconds], [1, 30], 'the attempt where the job was skipped does not dilute its median');
 });

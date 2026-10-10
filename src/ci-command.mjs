@@ -69,9 +69,12 @@ export async function ciCommand(args) {
     // Neither provider stderr nor arbitrary Git/configuration data enters JSON.
     const kind = { check: ['ci-check', 'top-level-github-workflow-static-baseline'], replay: ['ci-replay', 'local-act-replay-of-one-job'], verify: ['ci-verify', 'pre-push-local-verification'], history: ['ci-history', 'hosted-failure-and-timing-history'], locate: ['ci-locate', 'hosted-failure-location'], diff: ['ci-diff', 'workflow-change-coverage'] }[args[0]]
       || ['ci-inventory', 'committed-source-inventory'];
+    const { stack, message, reportOutputFailure, replayCode, verifyCode, historyCode, locateCode, diffCode, ...detail } = error;
+    const code = error.reportOutputFailure || error.replayCode || error.verifyCode || error.historyCode || error.locateCode || error.diffCode
+      || (/^[a-z-]+$/.test(error.message) ? error.message : 'discovery-failed');
     report = { schemaVersion: `ci-local-guard/${kind[0]}/v1`, command: `ci ${['check', 'replay', 'verify', 'history', 'locate', 'diff'].includes(args[0]) ? args[0] : 'discover'}`, identity: null,
       outcome: 'blocked', scope: kind[1],
-      issues: [{ code: error.reportOutputFailure || error.replayCode || error.verifyCode || error.historyCode || error.locateCode || error.diffCode || (/^[a-z-]+$/.test(error.message) ? error.message : 'discovery-failed') }],
+      issues: [{ code, ...detail }],
       nextActions: [{ kind: 'review-command-inputs', help: ['--help'], automatic: false }],
     };
   }

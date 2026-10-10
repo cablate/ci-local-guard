@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { parseWorkflow, runnerLabels } from './workflow-model.mjs';
-import { evaluateTrigger } from './workflow-triggers.mjs';
+import { evaluateTrigger, matchList } from './workflow-triggers.mjs';
 import { parse as parseYaml } from './vendor/yaml/index.js';
 
 // What a workflow change does to CI coverage: for the same event and the same
@@ -12,12 +12,14 @@ const MAX_FILES = 20000;
 const PROBE_BRANCH = 'guard-probe/feature';
 const PROBE_TAG = 'v0.0.0-guard-probe';
 const EXAMPLES = 5;
+const MAX_REF_PROBES = 8;
 
 export function diffOptions(args) {
-  const opts = { summary: false };
+  const opts = { summary: false, json: false };
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (key === '--summary') { opts.summary = true; continue; }
+    if (key === '--json') { opts.json = true; continue; }
     const value = args[i + 1];
     if (!['--repo', '--base', '--head', '--output'].includes(key) || Object.hasOwn(opts, key.slice(2)) || value === undefined || value.startsWith('--')) fail('invalid-diff-options', { detail: key });
     opts[key.slice(2)] = value;
@@ -89,6 +91,41 @@ function allCommands(snapshot) {
 
 const legsOf = job => job.matrix.kind === 'dynamic' ? null : job.matrix.legs;
 
+// A filter entry without pattern metacharacters names one real ref; pattern
+// entries are left to the built-in probe refs.
+const literalRef = name => !/[*?[\]\\!]|\$\{\{/.test(String(name));
+
+// Push scenarios: the default branch, a generic other branch and a tag, plus
+// every literal branch or tag either side names, so paths filters scoped to a
+// custom branch are still compared. An ignore list gets one representative its
+// patterns do not match, since every name it covers is already known not to
+// trigger on that side.
+function pushScenarios(before, after, defaultBranch) {
+  const scenarios = [{ ref: `refs/heads/${defaultBranch}`, label: `push to ${defaultBranch}` },
+    { ref: `refs/heads/${PROBE_BRANCH}`, label: 'push to another branch' }, { ref: `refs/tags/${PROBE_TAG}`, label: 'push of a tag' }];
+  const seen = new Set(scenarios.map(scenario => scenario.ref));
+  const add = (kind, name) => {
+    const ref = `refs/${kind}/${name}`;
+    if (!name || seen.has(ref)) return;
+    seen.add(ref);
+    scenarios.push({ ref, label: kind === 'tags' ? `push of tag ${name}` : `push to ${name}` });
+  };
+  const push = side => side.triggers.find(item => item.event === 'push')?.filters || {};
+  const a = push(before);
+  const b = push(after);
+  const names = key => [...new Set([...(a[key] || []), ...(b[key] || [])])].filter(literalRef).slice(0, MAX_REF_PROBES);
+  for (const name of names('branches')) add('heads', name);
+  for (const name of names('tags')) add('tags', name);
+  const ignored = (name, key) => [a, b].some(f => f[key] && matchList(name, f[key]));
+  if ((a['branches-ignore'] || b['branches-ignore']) && [defaultBranch, PROBE_BRANCH].every(name => ignored(name, 'branches-ignore'))) {
+    add('heads', [...names('branches'), 'guard-probe-branch'].find(name => !ignored(name, 'branches-ignore')));
+  }
+  if ((a['tags-ignore'] || b['tags-ignore']) && ignored(PROBE_TAG, 'tags-ignore')) {
+    add('tags', [...names('tags'), 'guard-probe-tag'].find(name => !ignored(name, 'tags-ignore')));
+  }
+  return scenarios;
+}
+
 // Each tracked file alone as the change: which workflows run before and after.
 function triggerChanges(before, after, files, defaultBranch) {
   const changes = [];
@@ -102,9 +139,7 @@ function triggerChanges(before, after, files, defaultBranch) {
         workflow: after.path, event, reason: !a || !b ? `on.${event} ${!b ? 'removed' : 'added'}` : `on.${event} filters changed and are not modelled` });
       continue;
     }
-    const scenarios = event === 'push'
-      ? [{ ref: `refs/heads/${defaultBranch}`, label: `push to ${defaultBranch}` }, { ref: `refs/heads/${PROBE_BRANCH}`, label: 'push to another branch' },
-        { ref: `refs/tags/${PROBE_TAG}`, label: 'push of a tag' }]
+    const scenarios = event === 'push' ? pushScenarios(before, after, defaultBranch)
       : [{ targetBranch: defaultBranch, label: `${event} into ${defaultBranch}` }, { targetBranch: PROBE_BRANCH, label: `${event} into another branch` }];
     for (const scenario of scenarios) {
       const tally = { narrowed: [], widened: [], unknown: 0, reason: null };

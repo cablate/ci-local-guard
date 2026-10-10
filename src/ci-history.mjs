@@ -72,7 +72,8 @@ export function collectHistory({ repository, workflow, limit }, { get = githubGe
 }
 
 // Per attempt: wall time from start to the last job, summed job seconds, and
-// billable minutes estimated as GitHub does (each job rounded up to a minute).
+// billable minutes estimated as GitHub does (each started job rounded up to a
+// minute; skipped and never-started jobs are not billed).
 export function measure(entry) {
   const start = time(entry.run.run_started_at) ?? time(entry.run.created_at);
   const jobs = entry.jobs.jobs.map(job => {
@@ -88,11 +89,13 @@ export function measure(entry) {
   });
   const ends = entry.jobs.jobs.map(job => time(job.completed_at)).filter(value => value !== null);
   const known = jobs.filter(job => job.seconds !== null);
+  const billed = known.filter(job => job.conclusion !== 'skipped');
   return { runId: entry.run.id, attempt: entry.run.run_attempt, sha: entry.run.head_sha, branch: entry.run.head_branch,
     event: entry.run.event, conclusion: entry.run.conclusion, startedAt: entry.run.run_started_at,
     waitSeconds: start !== null && ends.length ? Math.round((Math.max(...ends) - start) / 1000) : null,
-    jobSeconds: known.reduce((sum, job) => sum + job.seconds, 0),
-    billableMinutes: known.reduce((sum, job) => sum + Math.max(1, Math.ceil(job.seconds / 60)), 0),
+    jobSeconds: billed.reduce((sum, job) => sum + job.seconds, 0),
+    billableMinutes: billed.reduce((sum, job) => sum + Math.max(1, Math.ceil(job.seconds / 60)), 0),
+    skippedJobs: jobs.filter(job => job.conclusion === 'skipped').length,
     timingComplete: known.length === jobs.length, jobs };
 }
 
@@ -144,7 +147,7 @@ function summarizeAttempts(measured) {
     jobSeconds: { median: median(list.map(x => x.jobSeconds)) }, billableMinutes: { median: median(list.map(x => x.billableMinutes)) } });
   const jobs = new Map();
   for (const attempt of measured.filter(x => x.conclusion === 'success')) for (const job of attempt.jobs) {
-    if (job.seconds === null) continue;
+    if (job.seconds === null || job.conclusion === 'skipped') continue;
     if (!jobs.has(job.name)) jobs.set(job.name, { name: job.name, os: job.os, seconds: [] });
     jobs.get(job.name).seconds.push(job.seconds);
   }
@@ -311,7 +314,8 @@ export async function historyCi(opts, deps = {}) {
       byJob: Object.entries(failed.flatMap(x => x.jobs.filter(job => job.conclusion === 'failure').map(job => job.name))
         .reduce((acc, name) => ({ ...acc, [name]: (acc[name] || 0) + 1 }), {})).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
       attempts: failed.map(x => ({ runId: x.runId, attempt: x.attempt, sha: x.sha, branch: x.branch, event: x.event, waitSeconds: x.waitSeconds,
-        billableMinutes: x.billableMinutes, failedJobs: x.jobs.filter(job => job.conclusion === 'failure').map(job => ({ name: job.name, failedSteps: job.failedSteps })) })) };
+        billableMinutes: x.billableMinutes, skippedJobs: x.skippedJobs,
+        failedJobs: x.jobs.filter(job => job.conclusion === 'failure').map(job => ({ name: job.name, failedSteps: job.failedSteps })) })) };
 
     if (opts['test-timing']) {
       report.testTiming = testTiming(measured, { job: opts['test-timing'], compare: opts['compare-job'], samples: opts.samples, repository }, fetchLog);
