@@ -18,13 +18,20 @@ function gitText(repo, args) {
 }
 
 export function verifyOptions(args) {
-  const opts = { platform: {}, summary: false, staticOnly: false, pull: false };
+  const opts = { platform: {}, runnerLabels: [], summary: false, staticOnly: false, pull: false };
   const single = ['--repo', '--head', '--event', '--base', '--target', '--ref', '--timeout', '--act-binary', '--output'];
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (key === '--summary') { opts.summary = true; continue; }
     if (key === '--static-only') { opts.staticOnly = true; continue; }
     if (key === '--pull') { opts.pull = true; continue; }
+    if (key === '--runner-label') {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith('--') || !/^[A-Za-z0-9_.-]{1,128}$/.test(value)) fail('invalid-verify-options', { detail: key });
+      opts.runnerLabels.push(value);
+      i += 1;
+      continue;
+    }
     const value = args[i + 1];
     if (value === undefined || value.startsWith('--')) fail('invalid-verify-options', { detail: key });
     i += 1;
@@ -105,7 +112,7 @@ export async function verifyCi(opts, deps = {}) {
   const { discover = discoverCi, check = checkCi, replay = replayCi } = deps;
   const report = { schemaVersion: 'ci-local-guard/ci-verify/v1', command: 'ci verify', identity: null, outcome: 'blocked',
     verdict: null, expectedFailures: [], passedLocally: [], hostedOnly: [], notVerified: [], notTriggered: [], triggers: [],
-    staticCheck: null, replays: [], issues: [], nextActions: [],
+    staticOutsideTrigger: [], staticCheck: null, replays: [], issues: [], nextActions: [],
     limitation: 'Covers only what runs locally: static workflow checks and Linux jobs replayed with act. Trigger selection follows documented branch/tag/path filters; job if-conditions are evaluated by act during replay, not here. Hosted-only items still need GitHub Actions.' };
   try {
     const inventory = discover({ repo: opts.repo, head: opts.head || 'HEAD', tools: true, platform: opts.platform });
@@ -144,10 +151,23 @@ export async function verifyCi(opts, deps = {}) {
 
     // Static check of all workflows: a broken file fails the whole run.
     if (inventory.tools?.actionlint === 'available') {
-      const result = await check({ repo, head, provider: 'actionlint' });
+      const result = await check({ repo, head, provider: 'actionlint', runnerLabels: opts.runnerLabels });
       report.staticCheck = { provider: 'actionlint', outcome: result.outcome, findings: result.findings.length };
-      if (result.outcome === 'findings') report.expectedFailures.push(...result.findings.map(finding => ({ kind: 'static', ...finding })));
-      else if (result.outcome !== 'passed') report.notVerified.push({ stage: 'static', reason: result.issues.map(item => item.code).join(',') || result.outcome });
+      if (result.outcome === 'findings') {
+        const platforms = { ...DEFAULT_PLATFORMS, ...opts.platform };
+        let mappedRunnerLabels = 0;
+        for (const finding of result.findings) {
+          // A label the caller mapped to a local image is a coverage choice, not a push failure.
+          const unknown = finding.rule === 'runner-label' ? [...finding.message.matchAll(/"([^"]+)" is unknown/g)].map(match => match[1]) : [];
+          if (unknown.length && unknown.every(label => platforms[label])) { mappedRunnerLabels += 1; continue; }
+          if (report.triggers.find(item => item.workflow === finding.location.path)?.status === 'not-triggered') {
+            report.staticOutsideTrigger.push({ workflow: finding.location.path, reason: 'workflow is not triggered by this event', finding });
+            continue;
+          }
+          report.expectedFailures.push({ kind: 'static', ...finding });
+        }
+        if (mappedRunnerLabels) report.staticCheck.mappedRunnerLabels = mappedRunnerLabels;
+      } else if (result.outcome !== 'passed') report.notVerified.push({ stage: 'static', reason: result.issues.map(item => item.code).join(',') || result.outcome });
     } else {
       report.staticCheck = { provider: 'actionlint', outcome: 'not-run', reason: `actionlint ${inventory.tools?.actionlint || 'unknown'}` };
       report.notVerified.push({ stage: 'static', reason: 'actionlint not available', how: 'run doctor once to prepare the pinned actionlint, or set ACTIONLINT_BIN' });
@@ -164,11 +184,19 @@ export async function verifyCi(opts, deps = {}) {
         evidence: result.evidence?.[0]?.path || null };
       report.replays.push(entry);
       if (result.outcome === 'passed') report.passedLocally.push(entry);
-      else if (result.outcome === 'failed') report.expectedFailures.push({ kind: 'replay', ...entry,
-        failures: result.failures.map(item => ({ job: item.job, step: item.step.name, workflowLocation: item.workflowLocation,
-          command: item.command, failedTests: item.observed.failedTests, lastLines: item.observed.lastLines.slice(-8), reader: item.evidence.reader })),
-        nextActions: result.nextActions });
-      else report.notVerified.push({ stage: 'replay', ...entry, reason: result.issues.map(item => item.code).join(',') || result.outcome,
+      else if (result.outcome === 'failed') {
+        // An image gap is not a project failure; only real step failures are.
+        const compact = item => ({ job: item.job, step: item.step.name, workflowLocation: item.workflowLocation,
+          command: item.command, failedTests: item.observed.failedTests, lastLines: item.observed.lastLines.slice(-8), reader: item.evidence.reader,
+          ...(item.observed.environmentMismatch ? { environmentMismatch: item.observed.environmentMismatch } : {}) });
+        const environment = result.failures.filter(item => item.observed.environmentMismatch);
+        const project = result.failures.filter(item => !item.observed.environmentMismatch);
+        if (project.length) report.expectedFailures.push({ kind: 'replay', ...entry, failures: project.map(compact),
+          ...(environment.length ? { environmentFailures: environment.length } : {}), nextActions: result.nextActions });
+        else report.notVerified.push({ stage: 'replay-environment', ...entry,
+          reason: 'environment-mismatch: the replay image lacks libraries or tools that hosted runners preinstall',
+          failures: environment.map(compact), nextActions: result.nextActions.slice(0, 3) });
+      } else report.notVerified.push({ stage: 'replay', ...entry, reason: result.issues.map(item => item.code).join(',') || result.outcome,
         nextActions: result.nextActions.slice(0, 3) });
     }
     if (opts.staticOnly) for (const target of plan.targets) report.notVerified.push({ stage: 'replay', ...target, reason: 'skipped-by-static-only' });
@@ -200,6 +228,9 @@ function verdict(report) {
   if (report.staticCheck) parts.push(`static check ${report.staticCheck.outcome}`);
   parts.push(`${report.passedLocally.length} job leg(s) passed locally`);
   if (report.notVerified.length) parts.push(`${report.notVerified.length} not verified locally`);
+  const gaps = report.notVerified.filter(item => item.stage === 'replay-environment').length;
+  if (gaps) parts.push(`${gaps} replay environment gap(s)`);
+  if (report.staticOutsideTrigger.length) parts.push(`${report.staticOutsideTrigger.length} static finding(s) outside the event`);
   if (report.hostedOnly.length) parts.push(`${report.hostedOnly.length} hosted-only: ${report.hostedOnly.slice(0, 3).map(label).join(', ')}`);
   parts.push(`${report.notTriggered.length} workflow(s) not triggered`);
   return parts.join('; ');

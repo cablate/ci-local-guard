@@ -137,3 +137,72 @@ test('a --platform mapping turns third-party runner legs into replay targets, no
   assert.ok(unmapped.hostedOnly.some(x => x.workflow === '.github/workflows/bs.yml' && /blacksmith-2vcpu-ubuntu-2404/.test(x.reason)));
   assert.ok(!unmapped.notVerified.some(x => x.workflow === '.github/workflows/bs.yml'));
 });
+
+const staticFinding = (file, rule, message) => ({ provider: 'actionlint', rule, severity: 'error', message, location: { path: file, line: 3, column: 1 } });
+const envFailure = step => ({ job: 'build', step: { id: '1', name: step, stage: 'Main' }, workflowLocation: { path: '.github/workflows/ci.yml', line: 9 },
+  command: step, action: null,
+  observed: { lastLines: ['chrome-headless-shell: error while loading shared libraries: libnspr4.so'], failedTests: [],
+    environmentMismatch: { kind: 'missing-shared-library', detail: 'libnspr4.so', meaning: 'image gap' } },
+  evidence: { reader: { command: 'read-evidence', args: [] } } });
+const realFailure = step => ({ ...envFailure(step), observed: { lastLines: ['AssertionError'], failedTests: ['rejects bad input'] } });
+const passedReplay = async () => ({ outcome: 'passed', jobs: [], failures: [], issues: [], nextActions: [] });
+
+test('static findings of workflows this event does not trigger stay visible but are not failures', async t => {
+  const f = fixture(t);
+  f.write('.github/workflows/canary.yml', 'on: workflow_dispatch\njobs:\n  canary:\n    runs-on: ubuntu-latest\n    steps: [{run: ./canary.sh}]\n');
+  f.git('add', '.'); f.git('commit', '-qm', 'canary');
+  const seen = [];
+  const report = await verifyCi(verifyOptions(['--repo', f.root, '--event', 'pull_request', '--static-only']), {
+    discover, replay: passedReplay,
+    check: async opts => { seen.push(opts); return { outcome: 'findings', issues: [],
+      findings: [staticFinding('.github/workflows/canary.yml', 'expr', 'broken expression')] }; } });
+  assert.deepEqual(seen.at(-1).runnerLabels, []);
+  assert.equal(report.staticOutsideTrigger.length, 1);
+  assert.equal(report.staticOutsideTrigger[0].workflow, '.github/workflows/canary.yml');
+  assert.equal(report.staticOutsideTrigger[0].finding.rule, 'expr');
+  assert.equal(report.expectedFailures.length, 0);
+  assert.equal(report.outcome, 'incomplete');
+  assert.match(report.verdict, /1 static finding\(s\) outside the event/);
+});
+
+test('a runner-label finding for a label the caller mapped is a coverage note, not a failure', async t => {
+  const f = fixture(t);
+  const report = await verifyCi(verifyOptions(['--repo', f.root, '--event', 'push', '--static-only',
+    '--platform', 'blacksmith-2vcpu-ubuntu-2404=catthehacker/ubuntu:act-24.04']), {
+    discover, replay: passedReplay,
+    check: async () => ({ outcome: 'findings', issues: [], findings: [
+      staticFinding('.github/workflows/ci.yml', 'runner-label', 'label "blacksmith-2vcpu-ubuntu-2404" is unknown. available labels are "ubuntu-latest"'),
+      staticFinding('.github/workflows/ci.yml', 'expression', 'unreadable expression')] }) });
+  assert.deepEqual(report.expectedFailures.map(item => item.rule), ['expression']);
+  assert.equal(report.staticCheck.mappedRunnerLabels, 1);
+});
+
+test('replay failures caused by image gaps are environment notes, not expected failures', async t => {
+  const f = fixture(t);
+  const base = { discover, check: passCheck };
+  const only = await verifyCi(verifyOptions(['--repo', f.root, '--event', 'push']), { ...base,
+    replay: async () => ({ outcome: 'failed', jobs: [{ job: 'build', result: 'failure' }], issues: [], nextActions: [],
+      failures: [envFailure('npm run check')] }) });
+  assert.equal(only.expectedFailures.length, 0);
+  const gap = only.notVerified.find(item => item.stage === 'replay-environment');
+  assert.ok(gap && gap.failures[0].environmentMismatch.kind === 'missing-shared-library');
+  assert.equal(only.outcome, 'incomplete');
+  assert.match(only.verdict, /replay environment gap\(s\)/);
+  const mixed = await verifyCi(verifyOptions(['--repo', f.root, '--event', 'push']), { ...base,
+    replay: async () => ({ outcome: 'failed', jobs: [{ job: 'build', result: 'failure' }], issues: [], nextActions: [],
+      failures: [envFailure('npm run check'), realFailure('npm run build')] }) });
+  assert.equal(mixed.expectedFailures.length, 1);
+  assert.equal(mixed.expectedFailures[0].failures[0].step, 'npm run build');
+  assert.equal(mixed.expectedFailures[0].environmentFailures, 1);
+});
+
+test('--runner-label is repeatable and reaches the static check', async t => {
+  const f = fixture(t);
+  const seen = [];
+  await verifyCi(verifyOptions(['--repo', f.root, '--event', 'push', '--static-only',
+    '--runner-label', 'blacksmith-2vcpu-ubuntu-2404', '--runner-label', 'blacksmith-2vcpu-ubuntu-2204']),
+    { discover, replay: passedReplay, check: async opts => { seen.push(opts); return { outcome: 'passed', findings: [], issues: [] }; } });
+  assert.deepEqual(seen[0].runnerLabels, ['blacksmith-2vcpu-ubuntu-2404', 'blacksmith-2vcpu-ubuntu-2204']);
+  assert.throws(() => verifyOptions(['--runner-label']), /invalid-verify-options/);
+  assert.throws(() => verifyOptions(['--runner-label', 'bad label']), /invalid-verify-options/);
+});

@@ -47,7 +47,12 @@ export async function ciCommand(args) {
       const opts = {};
       for (let i = 1; i < args.length; i++) {
         const key = args[i];
-        const allowed = ['--repo', '--head', '--output', '--summary', '--json', ...(args[0] === 'check' ? ['--provider', '--binary'] : [])];
+        const allowed = ['--repo', '--head', '--output', '--summary', '--json', ...(args[0] === 'check' ? ['--provider', '--binary', '--runner-label'] : [])];
+        if (key === '--runner-label') {
+          if (!args[i + 1] || args[i + 1].startsWith('--') || !/^[A-Za-z0-9_.-]{1,128}$/.test(args[i + 1])) throw new Error('invalid-ci-options');
+          (opts.runnerLabels ??= []).push(args[++i]);
+          continue;
+        }
         if (!allowed.includes(key) || Object.hasOwn(opts, key)) throw new Error('invalid-ci-options');
         if (['--summary', '--json'].includes(key)) opts[key] = true;
         else {
@@ -57,7 +62,7 @@ export async function ciCommand(args) {
       }
       summary = Boolean(opts['--summary']);
       if (opts['--output']) save = reserveReportOutput(opts['--output']);
-      report = args[0] === 'check' ? await checkCi({ repo: opts['--repo'], head: opts['--head'], provider: opts['--provider'], binary: opts['--binary'] })
+      report = args[0] === 'check' ? await checkCi({ repo: opts['--repo'], head: opts['--head'], provider: opts['--provider'], binary: opts['--binary'], runnerLabels: opts.runnerLabels })
         : discoverCi({ repo: opts['--repo'], head: opts['--head'], tools: true });
     }
   } catch (error) {
