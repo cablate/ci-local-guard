@@ -118,6 +118,8 @@ Discovery reads the committed version (HEAD, or --head), not unfinished edits. F
 
 The tools field shows whether actionlint, zizmor, act, a Linux Docker engine and gh are available; only their version commands are run. nextActions gives the next commands as argument lists. Replay is only suggested for workflows that run on pull_request, because release or deploy workflows can have side effects. Root markers for GitLab, Jenkins, Woodpecker, Nx, Turborepo, Dagger, Earthly and Bazel are listed but not analyzed. Workflow structure is what the YAML declares: triggers, if-conditions and expressions are not evaluated.
 
+Git object reads run under a budget that scales with the inventory: 15 seconds plus 250 ms per entry, capped at 120 seconds, with each single git call capped at 10 seconds and retried once. A read killed by that budget reports discovery-deadline or git-call-timeout, which is distinct from git-read-unavailable-or-limit (git itself exited non-zero). A repository with no GitHub workflows inventories normally and carries a no-github-workflows note, instead of making you run ci check to learn that.
+
 ### Check workflows statically
 
 ```sh
@@ -164,7 +166,7 @@ Before running, Guard computes every container, network and volume name act will
 | blocked | Inputs, act, Docker, an image or a free resource name is missing; nothing ran | 2 |
 | incomplete | Timeout, cancellation, a job failure outside workflow steps, or unconfirmed cleanup | 3 |
 
-For a failed step, failures lists the job, matrix leg, step name, workflow line, the run command, the last lines of its output and any TAP "not ok" test names. These are observed output, not a diagnosed cause. When the output matches a well-known runner-image gap (a missing shared library, a missing sudo), observed.environmentMismatch says so and nextActions suggests a fuller image such as catthehacker/ubuntu:full-24.04; ci verify counts such replays as environment gaps, not project failures. evidence.reader holds read-evidence arguments for that step's section of the retained log. nextActions suggests reading that section, opening the workflow line, running the command in the working tree, and replaying again after committing a fix. A pass covers only coverage.replayed; verify coverage.notReplayed and coverage.notSelected on hosted CI.
+For a failed step, failures lists the job, matrix leg, step name, workflow line, the run command, the last lines of its output and any TAP "not ok" test names. Step names are display names, as hosted runs use them: the workflow's declared step name, or Run <first line> for unnamed run steps; the full multi-line script stays in the failure's command field. These are observed output, not a diagnosed cause. When the output matches a well-known runner-image gap (a missing shared library, a missing sudo), observed.environmentMismatch says so and nextActions suggests a fuller image such as catthehacker/ubuntu:full-24.04; ci verify counts such replays as environment gaps, not project failures. evidence.reader holds read-evidence arguments for that step's section of the retained log. nextActions suggests reading that section, opening the workflow line, running the command in the working tree, and replaying again after committing a fix. A pass covers only coverage.replayed; verify coverage.notReplayed and coverage.notSelected on hosted CI.
 
 Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1, ci-local-guard/ci-replay/v1, ci-local-guard/ci-locate/v1 and ci-local-guard/ci-diff/v1. Read identity, scope, coverage and issues alongside outcome. Running optimization experiments is planned, not implemented. Existing command schemas and exit codes are unchanged.
 
@@ -381,7 +383,7 @@ A minimal export looks like this. With no runs, it only checks that the input fo
 }
 ```
 
-A full entry contains run and jobs: { total_count, jobs }. Guard checks attempt/head identity, complete bounded job pagination and timestamps.
+A full entry contains run and jobs: { total_count, jobs }. Guard checks attempt/head identity, complete bounded job pagination and timestamps. Invalid input still produces a JSON report: outcome blocked with a machine-readable issue code (invalid-export-file, invalid-export-json, invalid-export-schema, invalid-run-export-options) and exit code 2, so a bad fixture is distinguishable from a tool crash.
 
 compare-runs expects run-comparison-input/v1. before and after each contain a complete export with at least two independent runs; reruns do not count as independent samples. Matching profiles allow a descriptive comparison. Failed or cancelled runs and missing evidence remain visible.
 

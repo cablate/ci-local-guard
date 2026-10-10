@@ -105,12 +105,12 @@ export function parseActLog(file) {
     const step = leg.steps.get(stepKey);
     step.endByte = offset;
     if (typeof entry.time === 'string') {
-      const at = { job: leg.job, step: step.name, at: entry.time, ...(step.stage ? { stage: step.stage } : {}) };
+      const at = { job: leg.job, step: step.name, id: step.id, at: entry.time, ...(step.stage ? { stage: step.stage } : {}) };
       last = at;
       // Action post steps (cleanup) run after the failure and hide it otherwise.
       if (!/^(post|pre)$/i.test(step.stage ?? '')) lastMain = at;
     }
-    if (entry.stepResult === 'failure') lastFailure = { job: leg.job, step: step.name, at: typeof entry.time === 'string' ? entry.time : null };
+    if (entry.stepResult === 'failure') lastFailure = { job: leg.job, step: step.name, id: step.id, at: typeof entry.time === 'string' ? entry.time : null };
     if (typeof entry.stepResult === 'string') step.result = entry.stepResult;
     if (entry.raw_output && typeof entry.msg === 'string') {
       for (const text of entry.msg.split(/\r?\n/).filter(Boolean)) {
@@ -320,18 +320,31 @@ export async function replayCi(options, deps = {}) {
 
 function summarize(report, parsed, workflow, logFile) {
   const byId = new Map(workflow.jobs.map(job => [job.id, job]));
+  // Steps are named the way hosted runs name them: the declared name, else
+  // "Run <first line>" for unnamed run steps. act's step field is the raw
+  // command text, which reads as a multiline script, not a step name.
+  const declaredStep = (jobId, id) => {
+    const job = byId.get(jobId);
+    return /^\d+$/.test(id ?? '') ? job?.steps[Number(id)] : job?.steps.find(item => item.id === id);
+  };
+  const displayName = (declared, raw) => {
+    const name = declared?.name
+      || (declared?.run ? `Run ${(declared.run.split(/\r?\n/).find(text => text.trim()) || '').trim()}` : undefined)
+      || declared?.uses || (typeof raw === 'string' && raw ? raw.split(/\r?\n/)[0] : raw);
+    return typeof name === 'string' ? name.slice(0, 200) : name;
+  };
+  const stepName = (jobId, id, raw) => displayName(declaredStep(jobId, id), raw);
   report.jobs = parsed.legs.map(leg => ({ job: leg.job, matrix: leg.matrix, result: leg.result || 'not-reported',
-    steps: leg.steps.map(({ id, name, stage, result, startByte, endByte }) => ({ id, name, stage, result: result || 'not-reported', evidence: { startByte, endByte } })) }));
+    steps: leg.steps.map(({ id, name, stage, result, startByte, endByte }) => ({ id, name: stepName(leg.job, id, name), stage, result: result || 'not-reported', evidence: { startByte, endByte } })) }));
   for (const leg of parsed.legs) {
     for (const step of leg.steps.filter(item => item.result === 'failure')) {
-      const job = byId.get(leg.job);
-      const declared = /^\d+$/.test(step.id) ? job?.steps[Number(step.id)] : job?.steps.find(item => item.id === step.id);
+      const declared = declaredStep(leg.job, step.id);
       const environmentMismatch = detectEnvironmentMismatch(step.tail);
       // Playwright/Vitest summary lists supplement TAP "not ok" names.
       const frameworkTests = extractFailedTests(step.tail.join('\n')).map(formatFailedTest)
         .filter(name => !step.failedTests.includes(name));
       const failedTests = [...step.failedTests, ...frameworkTests].slice(0, 20);
-      report.failures.push({ job: leg.job, matrix: leg.matrix, step: { id: step.id, name: step.name, stage: step.stage },
+      report.failures.push({ job: leg.job, matrix: leg.matrix, step: { id: step.id, name: stepName(leg.job, step.id, step.name), stage: step.stage },
         workflowLocation: declared ? { path: workflow.path, line: declared.line } : null,
         command: declared?.run ? declared.run.slice(0, 2000) : null, action: declared?.uses || null,
         observed: { lastLines: step.tail, failedTests,
@@ -348,10 +361,12 @@ function summarize(report, parsed, workflow, logFile) {
     const activity = parsed.lastMain ?? parsed.last;
     if (activity) {
       const silent = Math.round((Date.parse(report.execution.endedAt) - Date.parse(activity.at)) / 1000);
-      report.execution.lastActivity = { ...activity, ...(Number.isFinite(silent) && silent >= 0 ? { silentSeconds: silent } : {}),
+      report.execution.lastActivity = { ...activity, step: stepName(activity.job, activity.id, activity.step),
+        ...(Number.isFinite(silent) && silent >= 0 ? { silentSeconds: silent } : {}),
         ...(/^post$/i.test(activity.stage ?? '') ? { post: true } : {}) };
     }
-    if (parsed.lastFailure) report.execution.lastFailure = parsed.lastFailure;
+    if (parsed.lastFailure) report.execution.lastFailure = { ...parsed.lastFailure,
+      step: stepName(parsed.lastFailure.job, parsed.lastFailure.id, parsed.lastFailure.step) };
   }
   if (parsed.platformSkips.length) report.coverage.runnerMessages = parsed.platformSkips.slice(0, 5);
   if (report.outcome !== 'passed') report.runnerOutput = parsed.runner.slice(-EXCERPT_LINES);

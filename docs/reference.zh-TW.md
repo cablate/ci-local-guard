@@ -118,6 +118,8 @@ node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
 
 tools 欄位顯示 actionlint、zizmor、act、Linux Docker engine 與 gh 是否可用；只會執行它們的版本命令。nextActions 以參數陣列給出下一步命令。只會主動建議重播 pull_request 會觸發的 workflow，因為發布或部署 workflow 可能有副作用。GitLab、Jenkins、Woodpecker、Nx、Turborepo、Dagger、Earthly、Bazel 的根目錄設定只列出、不分析。workflow 結構是 YAML 宣告的內容：觸發條件、if 與運算式都不會求值。
 
+Git 物件讀取採用隨盤點規模縮放的時間預算：15 秒加上每筆 250 毫秒、上限 120 秒；單一 git 呼叫上限 10 秒並重試一次。被預算砍掉的讀取回報 discovery-deadline 或 git-call-timeout，與 git-read-unavailable-or-limit（git 本身以非零結束）不同。沒有 GitHub workflows 的 repo 照常完成盤點並附帶 no-github-workflows 註記，不必再跑 ci check 才知道。
+
 ### 靜態檢查 workflow
 
 ```sh
@@ -164,7 +166,7 @@ node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/
 | blocked | 缺輸入、act、Docker、image，或資源名稱已被占用；沒有執行 | 2 |
 | incomplete | 逾時、取消、workflow step 以外的 job 失敗，或清理未確認 | 3 |
 
-step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow 行號、run 命令、輸出的最後幾行，以及 TAP「not ok」測試名稱。這些是觀察到的輸出，不是診斷出的原因。輸出符合已知的 runner 映像檔缺口（缺系統函式庫、缺 sudo）時，observed.environmentMismatch 會標明，nextActions 建議改用更完整的映像檔（例如 catthehacker/ubuntu:full-24.04）；ci verify 會把這類重播算成環境差距，不是專案失敗。evidence.reader 是讀取保留 log 中該 step 區段的 read-evidence 參數。nextActions 會建議讀該區段、打開 workflow 那一行、在工作目錄執行該命令，並在提交修正後再重播。通過只涵蓋 coverage.replayed；coverage.notReplayed 與 coverage.notSelected 要在 Hosted CI 確認。
+step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow 行號、run 命令、輸出的最後幾行，以及 TAP「not ok」測試名稱。step 名稱採用 Hosted run 的顯示名慣例：workflow 宣告的名稱，未命名的 run 步驟則是 Run <首行>；完整的多行腳本仍保留在該 failure 的 command 欄位。這些是觀察到的輸出，不是診斷出的原因。輸出符合已知的 runner 映像檔缺口（缺系統函式庫、缺 sudo）時，observed.environmentMismatch 會標明，nextActions 建議改用更完整的映像檔（例如 catthehacker/ubuntu:full-24.04）；ci verify 會把這類重播算成環境差距，不是專案失敗。evidence.reader 是讀取保留 log 中該 step 區段的 read-evidence 參數。nextActions 會建議讀該區段、打開 workflow 那一行、在工作目錄執行該命令，並在提交修正後再重播。通過只涵蓋 coverage.replayed；coverage.notReplayed 與 coverage.notSelected 要在 Hosted CI 確認。
 
 報告使用 ci-local-guard/ci-inventory/v1、ci-local-guard/ci-check/v1、ci-local-guard/ci-replay/v1、ci-local-guard/ci-locate/v1 與 ci-local-guard/ci-diff/v1。閱讀 outcome 時也要看 identity、scope、coverage、issues。執行最佳化實驗仍在規劃，尚未實作。既有命令的 schemas 與 exit codes 不變。
 
@@ -381,7 +383,7 @@ ci-local-guard compare-runs --input comparison.json
 }
 ```
 
-完整的一筆資料包含 run 與 jobs: { total_count, jobs }。Guard 會核對 attempt/head、有限且完整的 job 分頁，以及時間戳。
+完整的一筆資料包含 run 與 jobs: { total_count, jobs }。Guard 會核對 attempt/head、有限且完整的 job 分頁，以及時間戳。無效輸入同樣會產生 JSON report：outcome blocked 附可機讀的 issue code（invalid-export-file、invalid-export-json、invalid-export-schema、invalid-run-export-options）與結束碼 2，壞的測資因此能與工具崩潰區分。
 
 compare-runs 使用 run-comparison-input/v1。before 和 after 各是一份完整匯出，至少各有兩次獨立執行；重跑同一次不算獨立樣本。執行條件相符時，工具才提供數值比較。失敗、取消或缺少資料的情況仍會列出。
 

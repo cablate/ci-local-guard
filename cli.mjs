@@ -453,16 +453,35 @@ See README.md for schemas, side effects and unverified protection boundaries.
     return;
   }
   if (['inspect-runs', 'audit-runs', 'compare-runs'].includes(verb)) {
-    if (rest.length !== 2 || rest[0] !== '--input') throw new Error('Usage: ' + verb + ' --input <export.json>');
-    const input = path.resolve(rest[1]);
-    const info = statSync(input);
-    if (!info.isFile() || info.size > 10 * 1024 * 1024) throw new Error('Export must be a regular file of at most 10 MiB');
-    let data;
-    try { data = JSON.parse(readFileSync(input, 'utf8')); }
-    catch { throw new Error('Export could not be read as valid JSON'); }
-    const report = (verb === 'compare-runs' ? compareRuns : verb === 'audit-runs' ? auditRuns : inspectRuns)(data);
-    process.stdout.write(JSON.stringify(report) + '\n');
-    return;
+    // Invalid input still owes the caller a JSON report like every other
+    // command; stderr text cannot tell a bad fixture from a crash.
+    const schema = { 'inspect-runs': 'ci-local-guard/run-inspection/v1',
+      'audit-runs': 'ci-local-guard/run-audit/v1', 'compare-runs': 'ci-local-guard/run-comparison/v1' }[verb];
+    try {
+      if (rest.length !== 2 || rest[0] !== '--input') throw new Error('Usage: ' + verb + ' --input <export.json>');
+      const input = path.resolve(rest[1]);
+      let info;
+      try { info = statSync(input); }
+      catch { throw Object.assign(new Error('Export file could not be read'), { exportCode: 'invalid-export-file' }); }
+      if (!info.isFile() || info.size > 10 * 1024 * 1024) {
+        throw Object.assign(new Error('Export must be a regular file of at most 10 MiB'), { exportCode: 'invalid-export-file' });
+      }
+      let data;
+      try { data = JSON.parse(readFileSync(input, 'utf8')); }
+      catch { throw Object.assign(new Error('Export could not be read as valid JSON'), { exportCode: 'invalid-export-json' }); }
+      const report = (verb === 'compare-runs' ? compareRuns : verb === 'audit-runs' ? auditRuns : inspectRuns)(data);
+      process.stdout.write(JSON.stringify(report) + '\n');
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = error.exportCode || (/^Usage:/.test(message) ? 'invalid-run-export-options' : 'invalid-export-schema');
+      const report = { schemaVersion: schema, command: verb, outcome: 'blocked',
+        issues: [{ code, detail: message }],
+        nextActions: [{ kind: 'review-export-input', help: [`${verb} --input <export.json>`], automatic: false }] };
+      process.stdout.write(JSON.stringify(report) + '\n');
+      process.exitCode = 2;
+      return;
+    }
   }
   if (!['doctor', 'plan', 'preflight', 'install-hook', 'uninstall-hook', 'pre-push', 'pre-commit'].includes(verb)) {
     throw new Error('Usage: node cli.mjs <doctor|plan|preflight|install-hook|uninstall-hook|pre-push|pre-commit> --repo <project> [--base <ref>]');

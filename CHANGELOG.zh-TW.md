@@ -14,6 +14,10 @@
 - `ci locate` 對 `workflow_run` 觸發的 run 找出觸發它的 run、改報那個 commit，而不是預設分支頭；run 自己的 head 保留在 `runHead`。
 - `ci locate` 與 `ci replay` 會把 Playwright 摘要區塊與 Vitest／Jest 的 `FAIL` 行解析進 `failedTests`，不再只支援 TAP。
 - 重播的 `lastActivity` 在失敗後不再指向 action 的 post step（`lastFailure` 指名失敗 step），post step 的輸出會標上 `post`。
+- `ci discover` 讀取 Git 物件的時間預算改為隨盤點規模縮放（15 秒＋每筆 250 毫秒、上限 120 秒），不再是固定 15 秒；單一 git 呼叫上限 10 秒並重試一次，被逾時砍掉的讀取回報 `git-call-timeout` 或 `discovery-deadline`，不再偽裝成 `git-read-unavailable-or-limit`。
+- `inspect-runs`、`audit-runs` 與 `compare-runs` 對無效輸入改輸出 JSON blocked report（可機讀 issue code、結束碼 2），不再只有 stderr 文字，保住 AI caller 的 JSON report 契約。
+- `ci discover` 在 repo 沒有 GitHub workflows 時附上 `no-github-workflows` 註記，比 `ci check` 早一輪就知道缺口。
+- `ci replay` 的 step 名稱改用 Hosted run 的顯示名慣例——workflow 宣告的名稱，未命名 run 步驟則是 `Run <首行>`——套用在 `jobs`、`failures`、`execution.lastActivity` 與 `execution.lastFailure`，不再放原始多行 `run:` 腳本（完整腳本仍留在 `failures[].command`）。
 
 ## [0.2.0] - 2026-10-09
 

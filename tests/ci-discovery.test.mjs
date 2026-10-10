@@ -183,3 +183,74 @@ test('caller platform mappings make third-party runner labels locally replayable
   assert.equal(mapped.workflows[0].jobs[0].localReplay.hostedOnly.length, 0);
   assert.throws(() => discoverCi({ repo: f.root, platform: { 'bad label': 'image' } }), /invalid-platform-mapping/);
 });
+
+test('a repo with zero workflows says so in the discover report, without becoming incomplete', t => {
+  const f = fixture(t, { 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
+  const r = discoverCi({ repo: f.root });
+  assert.equal(r.outcome, 'inventoried');
+  assert.deepEqual(r.workflows, []);
+  assert.deepEqual(r.issues, []);
+  assert.deepEqual(r.notes.map(note => note.code), ['no-github-workflows']);
+  const withWorkflows = fixture(t, { '.github/workflows/ci.yml': 'on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n' });
+  assert.equal('notes' in discoverCi({ repo: withWorkflows.root }), false);
+});
+
+// Stubbed git plus a fake clock: timing policy without real sleeps.
+function stubbedGit({ workflows = 1, perCallMs = 0, onCall } = {}) {
+  let clock = 0;
+  const files = new Map();
+  for (let i = 0; i < workflows; i++) files.set(`.github/workflows/w${i}.yml`, 'on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n');
+  const blobOf = new Map([...files].map(([file], i) => [file, `${(i + 1).toString(16).padStart(2, '0')}${'a'.repeat(38)}`]));
+  const byBlob = new Map([...blobOf].map(([file, blob]) => [blob, files.get(file)]));
+  const spawn = (binary, args, opts = {}) => {
+    const injected = onCall?.(args, opts, clock);
+    if (injected) { clock += injected.advance || 0; return injected.result; }
+    clock += perCallMs;
+    const command = args[2];
+    if (command === 'rev-parse') return { status: 0, stdout: args[3] === '--show-toplevel' ? 'X:/fake/repo\n' : `${'f'.repeat(40)}\n` };
+    if (command === 'ls-tree') return { status: 0, stdout: [...blobOf].map(([file, blob]) => `100644 blob ${blob}\t${file}`).join('\0') + '\0' };
+    if (command === 'cat-file') return args[3] === '-s'
+      ? { status: 0, stdout: `${Buffer.byteLength(byBlob.get(args[4]) ?? '')}\n` }
+      : { status: 0, stdout: byBlob.get(args[4]) ?? '' };
+    if (command === 'status') return { status: 0, stdout: '' };
+    return { status: 1, stdout: '' };
+  };
+  return { spawn, now: () => clock };
+}
+const timedOut = { status: null, error: Object.assign(new Error('spawnSync ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+
+test('the discovery budget scales with inventory instead of a fixed 15s wall', () => {
+  // 123 git calls at 200ms each: ~24.6s of work, past the old fixed 15s budget.
+  const git = stubbedGit({ workflows: 60, perCallMs: 200 });
+  const report = discoverCi({ repo: 'X:/fake/repo', spawn: git.spawn, now: git.now });
+  assert.equal(report.outcome, 'inventoried');
+  assert.equal(report.workflows.length, 60);
+  assert.equal(report.workflows[0].analysis, 'parsed');
+});
+
+test('one timed-out git read is retried, not reported as broken git', () => {
+  let injected = false;
+  const git = stubbedGit({ workflows: 1, onCall: (args, opts) => {
+    if (!injected && args[2] === 'cat-file' && args[3] === 'blob') {
+      injected = true;
+      return { advance: opts.timeout, result: timedOut };
+    }
+    return undefined;
+  } });
+  const report = discoverCi({ repo: 'X:/fake/repo', spawn: git.spawn, now: git.now });
+  assert.equal(injected, true);
+  assert.equal(report.workflows[0].analysis, 'parsed');
+});
+
+test('a git read timing out twice with budget left is a timeout, not unavailable git', () => {
+  const git = stubbedGit({ workflows: 60, onCall: (args, opts) => (
+    args[2] === 'cat-file' && args[3] === 'blob' ? { advance: opts.timeout, result: timedOut } : undefined) });
+  assert.throws(() => discoverCi({ repo: 'X:/fake/repo', spawn: git.spawn, now: git.now }), /git-call-timeout/);
+});
+
+test('nonzero git exit stays git-read-unavailable-or-limit; exhaustion stays discovery-deadline', () => {
+  const broken = stubbedGit({ onCall: args => (args[2] === 'ls-tree' ? { result: { status: 128, stdout: '' } } : undefined) });
+  assert.throws(() => discoverCi({ repo: 'X:/fake/repo', spawn: broken.spawn, now: broken.now }), /git-read-unavailable-or-limit/);
+  const slow = stubbedGit({ workflows: 1, perCallMs: 8000 });
+  assert.throws(() => discoverCi({ repo: 'X:/fake/repo', spawn: slow.spawn, now: slow.now }), /discovery-deadline/);
+});

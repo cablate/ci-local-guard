@@ -15,21 +15,35 @@ const markers = new Map([
 ]);
 const roots = ['.github/workflows', 'package.json', '.ci-local-guard.json', ...markers.keys()];
 const MAX_BYTES = 1024 * 1024;
+const BASE_DEADLINE_MS = 15000, PER_ENTRY_DEADLINE_MS = 250, MAX_DEADLINE_MS = 120000, GIT_CALL_CAP_MS = 10000;
 
 // This path only reads Git objects. Never inspect the dirty checkout, run a
 // project script, download a provider or expose command text from package.json.
-export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false, platform = {} } = {}) {
-  const deadline = performance.now() + 15000;
+export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false, platform = {}, spawn = spawnSync, now = () => performance.now() } = {}) {
+  const startedAt = now();
+  let deadline = startedAt + BASE_DEADLINE_MS;
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
   const read = (args, maxBuffer = MAX_BYTES) => {
-    const remaining = Math.floor(deadline - performance.now());
-    if (remaining <= 0) throw new Error('discovery-deadline');
-    const result = spawnSync('git', ['-C', repo, ...args], {
-      encoding: 'utf8', windowsHide: true, shell: false, timeout: remaining, maxBuffer,
-      env: { ...env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
-    });
-    if (result.status !== 0 || result.error) throw new Error('git-read-unavailable-or-limit');
-    return result.stdout;
+    const attempt = () => {
+      const remaining = Math.ceil(deadline - now());
+      if (remaining <= 0) throw new Error('discovery-deadline');
+      const result = spawn('git', ['-C', repo, ...args], {
+        encoding: 'utf8', windowsHide: true, shell: false, timeout: Math.min(remaining, GIT_CALL_CAP_MS), maxBuffer,
+        env: { ...env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
+      });
+      // A call we killed was slow, not broken; a nonzero exit is a broken read.
+      if (result.error?.code === 'ETIMEDOUT') {
+        if (now() >= deadline) throw new Error('discovery-deadline');
+        throw new Error('git-call-timeout');
+      }
+      if (result.status !== 0 || result.error) throw new Error('git-read-unavailable-or-limit');
+      return result.stdout;
+    };
+    try { return attempt(); }
+    catch (error) {
+      if (error.message !== 'git-call-timeout') throw error;
+      return attempt(); // One retry: a single slow git call is not a broken git.
+    }
   };
   if (typeof repo !== 'string' || !repo || typeof head !== 'string' || !head || head.length > 512
     || head.startsWith('-') || /[\x00-\x20\x7f]/.test(head)) throw new Error('invalid-repository-or-revision');
@@ -52,6 +66,9 @@ export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false,
     return { mode: match[1], type: match[2], blob: match[3], path: match[4] };
   });
   if (entries.length > 1024) throw new Error('inventory-entry-limit');
+  // The read phase scales with inventory: a fixed wall budget blocks large
+  // repositories and busy machines long before git is actually broken.
+  deadline = startedAt + Math.min(MAX_DEADLINE_MS, BASE_DEADLINE_MS + PER_ENTRY_DEADLINE_MS * entries.length);
   const workflows = [], engines = [], issues = [];
   let descriptor = { status: 'missing', path: '.ci-local-guard.json', blob: null };
   let scripts = { status: 'absent', names: [], source: null };
@@ -149,6 +166,10 @@ export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false,
     identity: { repo: root, head: sha, mode: 'committed', repository, workingTree: workingTree(read, head) },
     outcome: issues.length ? 'incomplete' : 'inventoried', scope: 'committed-source-inventory',
     workflows: analyzed, ciCommands: commands, engines, descriptor, scripts, tools: toolStatus, issues,
+    // A repo with no GitHub workflows inventories fine; say so here instead
+    // of making the caller run ci check just to learn it.
+    ...(workflows.length ? {} : { notes: [{ code: 'no-github-workflows',
+      meaning: 'no GitHub workflow files at .github/workflows for this commit; CI-level commands have nothing to inspect' }] }),
     coverage: { execution: 'not-run', workflowSemantics: 'structure-only-expressions-unevaluated',
       providerInstallation: toolStatus ? 'probed' : 'not-probed',
       inventory: 'root-markers-top-level-github-workflows-local-reusable-workflows-and-local-actions', nestedProjects: 'not-inspected' },

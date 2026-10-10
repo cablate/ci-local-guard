@@ -145,11 +145,22 @@ test('a failing step names the job, step, command, failed test and a readable lo
   assert.deepEqual(report.nextActions.slice(0, 3).map(a => a.kind), ['read-failed-step-log', 'inspect-workflow-step', 'reproduce-step-command']);
   assert.ok(report.runnerOutput.some(text => text.includes('plain runner text')));
   const summary = summarizeReplay(report);
-  assert.deepEqual(summary.jobs[0].failedSteps, ['node --test tests/*.test.mjs']);
+  assert.deepEqual(summary.jobs[0].failedSteps, ['Run node --test tests/*.test.mjs']);
 });
 
 test('a timeout is incomplete, and leftover containers of this run are removed while others survive', async t => {
-  const f = fixture(t);
+  const f = fixture(t, `name: Tests
+on: push
+jobs:
+  test:
+    runs-on: \${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+`);
   const d = daemon([{ kind: 'container', name: 'unrelated-sentinel' }]);
   const x = deps(f, d, { execute: async logFile => {
     // Service-style leftovers without our label, claimed by exact act name.
@@ -280,6 +291,44 @@ test('detectEnvironmentMismatch recognizes missing shared libraries and missing 
   assert.equal(detectEnvironmentMismatch(['sudo: command not found'])?.kind, 'missing-tool');
   assert.equal(detectEnvironmentMismatch(['error while loading shared libraries: libnspr4.so'])?.detail, 'libnspr4.so');
   assert.equal(detectEnvironmentMismatch(['AssertionError: bad']), null);
+});
+
+test('replay reports step display names, not the raw run script', async t => {
+  const workflow = `name: Tests
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: prepare
+        run: echo hi
+      - run: |
+          npm install
+          npm test
+`;
+  const f = fixture(t, workflow);
+  const d = daemon();
+  const raw = 'npm install\nnpm test';
+  const log = '[ci-local-guard] stage: ci-replay\n'
+    + line({ msg: 'Run Main npm install', stage: 'Main', step: raw, stepID: ['2'], time: '2026-10-10T00:00:01Z' })
+    + line({ msg: 'not ok 1 - suite rejects bad input\n', raw_output: true, stage: 'Main', step: raw, stepID: ['2'] })
+    + line({ msg: 'Failure', stage: 'Main', step: raw, stepID: ['2'], stepResult: 'failure', time: '2026-10-10T00:00:05Z' })
+    + line({ msg: 'Job failed', jobResult: 'failure' });
+  const x = deps(f, d, { execute: async logFile => {
+    writeFileSync(logFile, log);
+    throw Object.assign(new Error('exit'), { logFile, durationMs: 9,
+      executionFailure: { exitCode: 1, causes: ['child-exit-nonzero'] } });
+  } });
+  const report = await replayCi(replayOptions(['--repo', f.root, '--workflow', '.github/workflows/ci.yml',
+    '--job', 'test', '--platform', 'ubuntu-latest=node:22']), x.deps);
+  assert.equal(report.outcome, 'failed');
+  assert.equal(report.failures[0].step.name, 'Run npm install');
+  assert.equal(report.failures[0].command, `${raw}\n`, 'the full script stays available as the command');
+  assert.equal(report.execution.lastFailure.step, 'Run npm install');
+  assert.equal(report.execution.lastActivity.step, 'Run npm install');
+  assert.equal(report.jobs[0].steps.find(step => step.id === '2').name, 'Run npm install');
+  assert.deepEqual(summarizeReplay(report).jobs[0].failedSteps, ['Run npm install']);
 });
 
 test('lastActivity keeps pointing at the failed main step, not the post-step cleanup', t => {

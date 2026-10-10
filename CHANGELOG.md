@@ -14,6 +14,10 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 - `ci locate` resolves the triggering run for `workflow_run` events and reports its commit instead of the default branch head, keeping the run's own head under `runHead`.
 - `ci locate` and `ci replay` parse Playwright summary blocks and Vitest/Jest `FAIL` lines into `failedTests`, not just TAP.
 - A replay's `lastActivity` no longer points at action post steps after a failure (`lastFailure` names the failed step) and post-step output is marked `post`.
+- `ci discover` reads Git objects under a budget that scales with the inventory (15 s plus 250 ms per entry, capped at 120 s) instead of a fixed 15 s wall clock; each git call is capped at 10 s and retried once, and a timed-out read reports `git-call-timeout` or `discovery-deadline` instead of masquerading as `git-read-unavailable-or-limit`.
+- `inspect-runs`, `audit-runs` and `compare-runs` answer invalid input with a JSON blocked report (machine-readable issue code, exit 2) instead of bare stderr text, keeping the JSON-report contract for AI callers.
+- `ci discover` adds a `no-github-workflows` note when a repository has no GitHub workflows, so the gap surfaces one round trip earlier than `ci check`.
+- `ci replay` names steps the way hosted runs do — the declared step name, or `Run <first line>` for unnamed run steps — in `jobs`, `failures`, `execution.lastActivity` and `execution.lastFailure`, instead of the raw multi-line `run:` script (which stays available as `failures[].command`).
 
 ## [0.2.0] - 2026-10-09
 

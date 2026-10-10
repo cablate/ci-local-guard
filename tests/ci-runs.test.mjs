@@ -669,18 +669,24 @@ test('offline CLI needs no project checkout or credentials and invalid input exi
       assert.doesNotMatch(rejected.stderr, /metadata GET failed|private-invalid-value/);
     }
     writeFileSync(file, 'private-invalid-export-value');
-    const invalid = call();
-    assert.equal(invalid.status, 1);
-    assert.equal(invalid.stdout, '');
-    assert.ok(!invalid.stderr.includes('private-invalid-export-value'));
-    const invalidAudit = call('audit-runs');
-    assert.equal(invalidAudit.status, 1);
-    assert.equal(invalidAudit.stdout, '');
-    assert.ok(!invalidAudit.stderr.includes('private-invalid-export-value'));
-    const invalidCompare = call('compare-runs');
-    assert.equal(invalidCompare.status, 1);
-    assert.equal(invalidCompare.stdout, '');
-    assert.ok(!invalidCompare.stderr.includes('private-invalid-export-value'));
+    // Invalid input is a JSON blocked report with a machine code, not bare stderr.
+    const blocked = (result, code) => {
+      assert.equal(result.status, 2, result.stderr);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.outcome, 'blocked');
+      assert.equal(report.issues[0].code, code);
+      assert.ok(!JSON.stringify(report).includes('private-invalid-export-value'));
+    };
+    blocked(call(), 'invalid-export-json');
+    blocked(call('audit-runs'), 'invalid-export-json');
+    blocked(call('compare-runs'), 'invalid-export-json');
+    writeFileSync(file, JSON.stringify({ schemaVersion: 'nope' }));
+    blocked(call(), 'invalid-export-schema');
+    blocked(call('compare-runs'), 'invalid-export-schema');
+    blocked(spawnSync(process.execPath, [cli, 'inspect-runs', '--input', path.join(root, 'missing.json')],
+      { cwd: root, encoding: 'utf8', timeout: 10000 }), 'invalid-export-file');
+    blocked(spawnSync(process.execPath, [cli, 'inspect-runs', '--input'],
+      { cwd: root, encoding: 'utf8', timeout: 10000 }), 'invalid-run-export-options');
     for (const args of [
       ['--repository', '../invalid', '--workflow', 'ci.yml'],
       ['--repository', 'example/project', '--workflow', 'ci.yml', '--limit', '26'],
