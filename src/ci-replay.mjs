@@ -74,6 +74,8 @@ export function parseActLog(file) {
   const runner = [];
   const platformSkips = [];
   let last = null;
+  let lastMain = null;
+  let lastFailure = null;
   let offset = 0;
   while (offset < buffer.length) {
     let end = buffer.indexOf(10, offset);
@@ -101,7 +103,13 @@ export function parseActLog(file) {
       stage: entry.stage ?? null, result: null, startByte: start, endByte: offset, tail: [], failedTests: [] });
     const step = leg.steps.get(stepKey);
     step.endByte = offset;
-    if (typeof entry.time === 'string') last = { job: leg.job, step: step.name, at: entry.time };
+    if (typeof entry.time === 'string') {
+      const at = { job: leg.job, step: step.name, at: entry.time, ...(step.stage ? { stage: step.stage } : {}) };
+      last = at;
+      // Action post steps (cleanup) run after the failure and hide it otherwise.
+      if (!/^(post|pre)$/i.test(step.stage ?? '')) lastMain = at;
+    }
+    if (entry.stepResult === 'failure') lastFailure = { job: leg.job, step: step.name, at: typeof entry.time === 'string' ? entry.time : null };
     if (typeof entry.stepResult === 'string') step.result = entry.stepResult;
     if (entry.raw_output && typeof entry.msg === 'string') {
       for (const text of entry.msg.split(/\r?\n/).filter(Boolean)) {
@@ -113,7 +121,19 @@ export function parseActLog(file) {
       }
     }
   }
-  return { legs: [...legs.values()].map(leg => ({ ...leg, steps: [...leg.steps.values()] })), runner, platformSkips, size, last };
+  return { legs: [...legs.values()].map(leg => ({ ...leg, steps: [...leg.steps.values()] })), runner, platformSkips, size, last, lastMain, lastFailure };
+}
+
+// Well-known gaps between lean act images and what GitHub-hosted runners preinstall.
+export function detectEnvironmentMismatch(lines) {
+  for (const text of lines) {
+    const library = /error while loading shared libraries: (\S+)/.exec(text);
+    if (library) return { kind: 'missing-shared-library', detail: library[1],
+      meaning: 'the replay image lacks a library that GitHub-hosted runners preinstall; an image gap, not a project failure' };
+    if (/(?:^|\s)sudo: command not found/.test(text)) return { kind: 'missing-tool', detail: 'sudo',
+      meaning: 'the replay image lacks sudo, which GitHub-hosted runners preinstall; an image gap, not a project failure' };
+  }
+  return null;
 }
 
 function eventPayload(event, { sha, ref }) {
@@ -305,19 +325,28 @@ function summarize(report, parsed, workflow, logFile) {
     for (const step of leg.steps.filter(item => item.result === 'failure')) {
       const job = byId.get(leg.job);
       const declared = /^\d+$/.test(step.id) ? job?.steps[Number(step.id)] : job?.steps.find(item => item.id === step.id);
+      const environmentMismatch = detectEnvironmentMismatch(step.tail);
       report.failures.push({ job: leg.job, matrix: leg.matrix, step: { id: step.id, name: step.name, stage: step.stage },
         workflowLocation: declared ? { path: workflow.path, line: declared.line } : null,
         command: declared?.run ? declared.run.slice(0, 2000) : null, action: declared?.uses || null,
         observed: { lastLines: step.tail, failedTests: step.failedTests,
+          ...(environmentMismatch ? { environmentMismatch } : {}),
           meaning: 'Observed output of the failed step; not a diagnosed root cause.' },
         evidence: { id: 'replay-log', startByte: step.startByte, endByte: step.endByte,
           reader: { command: 'read-evidence', args: readerArgs(logFile, step.startByte, step.endByte), automatic: false } } });
     }
   }
   // Where a stopped run was: the last step that printed anything, and when.
-  if (parsed.last && report.execution) {
-    const silent = Math.round((Date.parse(report.execution.endedAt) - Date.parse(parsed.last.at)) / 1000);
-    report.execution.lastActivity = { ...parsed.last, ...(Number.isFinite(silent) && silent >= 0 ? { silentSeconds: silent } : {}) };
+  // Post steps (action cleanup) run after the failure, so prefer the last
+  // main-stage output and name the failed step instead of its cleanup.
+  if (report.execution) {
+    const activity = parsed.lastMain ?? parsed.last;
+    if (activity) {
+      const silent = Math.round((Date.parse(report.execution.endedAt) - Date.parse(activity.at)) / 1000);
+      report.execution.lastActivity = { ...activity, ...(Number.isFinite(silent) && silent >= 0 ? { silentSeconds: silent } : {}),
+        ...(/^post$/i.test(activity.stage ?? '') ? { post: true } : {}) };
+    }
+    if (parsed.lastFailure) report.execution.lastFailure = parsed.lastFailure;
   }
   if (parsed.platformSkips.length) report.coverage.runnerMessages = parsed.platformSkips.slice(0, 5);
   if (report.outcome !== 'passed') report.runnerOutput = parsed.runner.slice(-EXCERPT_LINES);
@@ -352,6 +381,9 @@ function decide(report, opts, rerun) {
       if (failure.command) report.nextActions.push({ kind: 'reproduce-step-command', command: failure.command, cwd: 'repository-root',
         note: 'Copied from the workflow. Run it in your working tree to check uncommitted fixes quickly; it runs on your host, not in the replay image.', automatic: false });
     }
+    if (report.failures.some(failure => failure.observed.environmentMismatch)) report.nextActions.push({ kind: 'consider-fuller-replay-image',
+      reason: 'the mapped replay image lacks libraries or tools that GitHub-hosted runners preinstall',
+      suggestion: 'replay with --platform <label>=catthehacker/ubuntu:full-24.04 (closer to the hosted runner image), or install them in the workflow (for example npx playwright install --with-deps)', automatic: false });
     report.nextActions.push({ kind: 'replay-after-commit', reason: 'replay checks a commit; commit the fix first', ...rerun({ head: 'HEAD' }) });
   } else if (report.outcome === 'passed') {
     const other = [...report.coverage.notReplayed, ...(report.coverage.notSelected || [])];

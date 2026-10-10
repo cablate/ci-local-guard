@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { replayCi, replayOptions, parseActLog, summarizeReplay } from '../src/ci-replay.mjs';
+import { detectEnvironmentMismatch, replayCi, replayOptions, parseActLog, summarizeReplay } from '../src/ci-replay.mjs';
 import { actContainerName } from '../src/workflow-model.mjs';
 import { readEvidence } from '../src/evidence.mjs';
 
@@ -254,4 +254,44 @@ test('Docker daemon requirement blocks before any tool probe or execution', asyn
   assert.equal(report.issues[0].code, 'docker-daemon-unavailable-in-replay');
   assert.equal(report.resources, null);
   assert.equal(report.nextActions[0].kind, 'verify-on-hosted-ci');
+});
+
+test('an image library gap is tagged as an environment mismatch, not only a step failure', async t => {
+  const f = fixture(t);
+  const d = daemon();
+  const log = '[ci-local-guard] stage: ci-replay\n'
+    + line({ msg: 'Run Main npm run check', stage: 'Main', step: 'npm run check', stepID: ['1'] })
+    + line({ msg: 'chrome-headless-shell: error while loading shared libraries: libnspr4.so\n', raw_output: true, stage: 'Main', step: 'npm run check', stepID: ['1'] })
+    + line({ msg: 'Failure', stage: 'Main', step: 'npm run check', stepID: ['1'], stepResult: 'failure' })
+    + line({ msg: 'Job failed', jobResult: 'failure' });
+  const x = deps(f, d, { execute: async logFile => {
+    writeFileSync(logFile, log);
+    throw Object.assign(new Error('exit'), { logFile, durationMs: 9,
+      executionFailure: { exitCode: 1, causes: ['child-exit-nonzero'] } });
+  } });
+  const report = await replayCi(options(f), x.deps);
+  assert.equal(report.outcome, 'failed');
+  assert.deepEqual(report.failures[0].observed.environmentMismatch, { kind: 'missing-shared-library', detail: 'libnspr4.so',
+    meaning: 'the replay image lacks a library that GitHub-hosted runners preinstall; an image gap, not a project failure' });
+  assert.ok(report.nextActions.some(a => a.kind === 'consider-fuller-replay-image'));
+});
+
+test('detectEnvironmentMismatch recognizes missing shared libraries and missing sudo', t => {
+  assert.equal(detectEnvironmentMismatch(['sudo: command not found'])?.kind, 'missing-tool');
+  assert.equal(detectEnvironmentMismatch(['error while loading shared libraries: libnspr4.so'])?.detail, 'libnspr4.so');
+  assert.equal(detectEnvironmentMismatch(['AssertionError: bad']), null);
+});
+
+test('lastActivity keeps pointing at the failed main step, not the post-step cleanup', t => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'guard-actlog-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'a.log');
+  writeFileSync(file,
+    line({ msg: 'Run Main npm test', stage: 'Main', step: 'npm test', stepID: ['1'], time: '2026-10-10T00:00:10Z' })
+    + line({ msg: 'Failure', stage: 'Main', step: 'npm test', stepID: ['1'], stepResult: 'failure', time: '2026-10-10T00:00:12Z' })
+    + line({ msg: 'Post action cache', stage: 'Post', step: 'Post Cache', stepID: ['2'], time: '2026-10-10T00:00:13Z' }));
+  const parsed = parseActLog(file);
+  assert.equal(parsed.lastFailure.step, 'npm test');
+  assert.equal(parsed.lastMain.step, 'npm test');
+  assert.equal(parsed.last.step, 'Post Cache');
 });
