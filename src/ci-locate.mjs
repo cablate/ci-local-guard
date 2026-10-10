@@ -7,6 +7,7 @@ import { hostedNames } from './ci-history.mjs';
 import { evidenceVersion } from './evidence.mjs';
 import { interpolateMatrix } from './workflow-model.mjs';
 import { replayArgv } from './ci-replay.mjs';
+import { extractFailedTests } from './test-reports.mjs';
 
 // Where did a hosted run fail: job -> step -> test, with the matching log
 // section kept locally for paged reading. Read-only GitHub access; the log
@@ -83,8 +84,10 @@ function testLocation(raw) {
   return match ? { file: match[2], line: Number(match[3]) } : { raw: plain.slice(0, 300) };
 }
 
-// Observed facts from a failed step's section: error annotations, failing TAP
-// tests with their location and first error line, and the last output lines.
+// Observed facts from a failed step's section: error annotations, failing tests
+// with their location and first error line, and the last output lines. TAP is
+// parsed structurally; Playwright summaries and Vitest FAIL lines carry the
+// same facts for runners that never emit TAP.
 export function readSection(lines, section) {
   const errors = [];
   const tests = [];
@@ -94,7 +97,7 @@ export function readSection(lines, section) {
     if (text.startsWith('##[error]')) { if (errors.length < 5) errors.push(text.slice(9, 409)); continue; }
     const tap = /^\s*not ok \d+ - (.+?)(?:\s+#\s*(?:TODO|SKIP)\b.*)?$/.exec(text);
     if (tap && tests.length < MAX_TESTS && !tests.some(item => item.name === tap[1])) {
-      const item = { name: tap[1].slice(0, 300), location: null, failedAt: null, message: [], startByte: lines[i].start, endByte: lines[i].end };
+      const item = { name: tap[1].slice(0, 300), location: null, failedAt: null, message: [], source: 'tap', startByte: lines[i].start, endByte: lines[i].end };
       const indent = /^\s*/.exec(text)[0].length;
       let block = null;
       for (let j = i + 1; j < section.last; j++) {
@@ -122,6 +125,14 @@ export function readSection(lines, section) {
       tests.push(item);
     }
     if (!text.startsWith('##[')) { tail.push(text.slice(0, 400)); if (tail.length > TAIL_LINES) tail.shift(); }
+  }
+  // Non-TAP entries get the section itself as evidence; a repeat of a name the
+  // TAP parser already found is the same test, not a new one.
+  const text = lines.slice(section.first, section.last).map(line => line.text).join('\n');
+  for (const entry of extractFailedTests(text)) {
+    if (tests.some(item => item.name === entry.name.slice(0, 300))) continue;
+    tests.push({ name: entry.name.slice(0, 300), location: entry.location, failedAt: null, message: [], source: entry.source,
+      startByte: section.startByte, endByte: section.endByte });
   }
   return { errors, tests, tail };
 }
@@ -175,6 +186,27 @@ function selectRuns(opts, repository, head, get) {
   return listed.workflow_runs.filter(run => run.head_sha === head && (!opts.workflow || path.posix.basename(String(run.path).split('@')[0]) === opts.workflow));
 }
 
+// A workflow_run-triggered run reports the default-branch head as its own
+// head_sha, but the code that ran is the commit of the triggering run: the
+// closest completed run that started earlier on a different head.
+function effectiveHead(prefix, run, get) {
+  const own = { sha: run.head_sha, branch: run.head_branch ?? null };
+  if (run.event !== 'workflow_run') return own;
+  const started = seconds(run.run_started_at ?? run.created_at);
+  const at = item => seconds(item?.run_started_at ?? item?.created_at);
+  let trigger = null;
+  try {
+    const listed = get(`${prefix}/runs?status=completed&per_page=100&page=1`);
+    trigger = (Array.isArray(listed?.workflow_runs) ? listed.workflow_runs : [])
+      .filter(item => item && item.id !== run.id && item.status === 'completed'
+        && typeof item.head_sha === 'string' && item.head_sha !== run.head_sha
+        && started !== null && at(item) !== null && at(item) < started)
+      .sort((a, b) => at(b) - at(a))[0] ?? null;
+  } catch { trigger = null; }
+  if (!trigger) return { ...own, shaSource: 'run-head-fallback' };
+  return { sha: trigger.head_sha, branch: trigger.head_branch ?? null, shaSource: 'workflow-run-trigger' };
+}
+
 export async function locateCi(opts, deps = {}) {
   const { get = githubGet, fetchLog = githubJobLog, discover = discoverCi, platform = process.platform } = deps;
   const report = { schemaVersion: 'ci-local-guard/ci-locate/v1', command: 'ci locate', identity: null, outcome: 'blocked', verdict: null,
@@ -212,10 +244,12 @@ export async function locateCi(opts, deps = {}) {
       return workflowCache.get(key);
     };
     for (const run of runs) {
+      const head = effectiveHead(`repos/${repository}/actions`, run, endpoint => get(endpoint));
       const entry = collectAttemptJobs(`repos/${repository}/actions`, run, runSource(run), endpoint => get(endpoint));
       const file = String(run.path || '').split('@')[0] || null;
-      const summary = { runId: run.id, attempt: run.run_attempt, workflow: file, name: run.name ?? null, sha: run.head_sha, event: run.event,
-        branch: run.head_branch ?? null, status: run.status, conclusion: run.conclusion ?? null, url: run.html_url ?? null,
+      const summary = { runId: run.id, attempt: run.run_attempt, workflow: file, name: run.name ?? null, sha: head.sha, event: run.event,
+        branch: head.branch, ...(head.shaSource ? { shaSource: head.shaSource, runHead: { sha: run.head_sha, branch: run.head_branch ?? null } } : {}),
+        status: run.status, conclusion: run.conclusion ?? null, url: run.html_url ?? null,
         jobs: { total: entry.jobs.jobs.length, failed: 0, pending: 0 } };
       report.runs.push(summary);
       const wf = file ? workflowAt(run.head_sha, file) : null;
@@ -228,7 +262,7 @@ export async function locateCi(opts, deps = {}) {
         const declaredJob = mapped ? wf.jobs.find(item => item.id === mapped.job) : null;
         const steps = job.steps || [];
         const failedStep = steps.find(step => FAILED.includes(step.conclusion)) || null;
-        const failure = { runId: run.id, attempt: run.run_attempt, sha: run.head_sha, job: job.name, jobId: job.id, conclusion: job.conclusion,
+        const failure = { runId: run.id, attempt: run.run_attempt, sha: head.sha, job: job.name, jobId: job.id, conclusion: job.conclusion,
           runner: job.labels || [], workflowJob: mapped ? { id: mapped.job, matrix: mapped.matrix } : null,
           step: failedStep ? { number: failedStep.number, name: failedStep.name, conclusion: failedStep.conclusion } : null,
           stepKind: null, workflowLocation: null, command: null, observed: null, evidence: null, located: false };
@@ -259,7 +293,7 @@ export async function locateCi(opts, deps = {}) {
           tail: reader(saved.file, version, Math.max(section.startByte, section.endByte - 8192), section.endByte) };
         failure.located = true;
         const hostOs = { win32: 'windows', darwin: 'macos', linux: 'ubuntu' }[platform];
-        const local = { headMatches: run.head_sha === inventory.identity.head,
+        const local = { headMatches: head.sha === inventory.identity.head,
           replayable: Boolean(declaredJob?.localReplay.replayable.some(leg => JSON.stringify(leg.matrix) === JSON.stringify(mapped.matrix))),
           sameOsAsRunner: Boolean(hostOs && (job.labels || []).some(label => label.toLowerCase().startsWith(hostOs))) };
         failure.local = local;
@@ -314,6 +348,11 @@ function decide(report, opts) {
     job: replay.workflowJob.id, event: 'push', matrix: replay.workflowJob.matrix }) });
   const other = located.find(item => !item.local.headMatches);
   if (other) add('note-local-head-differs', { runSha: other.sha, localHead: report.identity.localHead, reason: 'the failed run is for a different commit than your local HEAD; check the failing code still exists before editing' });
+  for (const run of report.runs.filter(item => item.shaSource === 'run-head-fallback')) {
+    if (!failures.some(item => item.runId === run.runId)) continue;
+    add('confirm-failed-commit', { runId: run.runId,
+      reason: 'the triggering run of this workflow_run failure could not be identified; its own head is reported, so confirm which commit actually failed' });
+  }
   add('verify-before-next-push', { command: 'ci verify', args: ['--repo', report.identity.localRepo, '--summary'],
     reason: 'after fixing and committing, check locally before pushing again' });
 }
@@ -324,10 +363,11 @@ function locateArgv(report, opts) {
 }
 
 export function summarizeLocate(report) {
-  return { ...report, runs: report.runs.map(({ runId, attempt, workflow, sha, branch, event, conclusion, status, jobs }) => ({ runId, attempt, workflow, sha, branch, event, status, conclusion, jobs })),
+  return { ...report, runs: report.runs.map(({ runId, attempt, workflow, sha, branch, event, conclusion, status, jobs, shaSource, runHead }) =>
+      ({ runId, attempt, workflow, sha, branch, event, status, conclusion, jobs, ...(shaSource ? { shaSource } : {}), ...(runHead ? { runHead } : {}) })),
     failures: report.failures.map(item => ({ job: item.job, runId: item.runId, sha: item.sha, step: item.step?.name ?? null, stepKind: item.stepKind,
       workflowLocation: item.workflowLocation, command: item.command, located: item.located,
-      failedTests: (item.observed?.failedTests || []).map(({ name, location, failedAt, message }) => ({ name, location, failedAt, message })),
+      failedTests: (item.observed?.failedTests || []).map(({ name, location, failedAt, message, source }) => ({ name, location, failedAt, message, source })),
       errors: item.observed?.errors || [], lastLines: (item.observed?.lastLines || []).slice(-8),
       evidence: item.evidence && { status: item.evidence.status, path: item.evidence.path, startByte: item.evidence.startByte, endByte: item.evidence.endByte } })) };
 }

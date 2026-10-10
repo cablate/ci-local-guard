@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { declaredStep, locateCi, locateOptions, readSection, stepSection } from '../src/ci-locate.mjs';
+import { declaredStep, locateCi, locateOptions, readSection, stepSection, summarizeLocate } from '../src/ci-locate.mjs';
 
 const at = s => `2026-10-01T00:00:${String(s).padStart(2, '0')}`;
 const line = (s, text) => `${at(s)}.1234567Z ${text}`;
@@ -71,13 +71,32 @@ const run = { id: 7, run_attempt: 1, head_sha: sha, head_branch: 'main', event: 
   path: '.github/workflows/ci.yml', repository: { full_name: 'o/r' }, workflow_id: 3 };
 const job = (id, name, conclusion, steps, status = 'completed') => ({ id, name, status, conclusion, labels: [name.includes('windows') ? 'windows-latest' : 'ubuntu-latest'], steps });
 
-function fixture(jobs, logs) {
+const playwrightLog = [
+  line(1, '##[group]Run actions/checkout@v5'), line(2, 'checked out'),
+  line(5, '##[group]Run npm test'), line(6, 'running e2e'),
+  line(7, '  2 failed'),
+  line(7, '    tests/e2e/spa/scale-distribution-layout.spec.mjs:8:1 › keeps a 1–10 presenter distribution ...'),
+  line(7, '    tests/e2e/spa/student-workflow.spec.mjs:766:5 › 1. join ... › traffic baseline ...'),
+  line(7, '  1 flaky'),
+  line(7, '    tests/e2e/spa/flaky.spec.mjs:3:1 › retries until green'),
+  line(7, '  210 passed (4:32)'),
+  line(8, '##[error]Process completed with exit code 1.'), line(8, 'Post job cleanup.'),
+].join('\n') + '\n';
+
+function fixture(jobs, logs, { run: selectedRun = run, listing = null, listingFails = false, identityHead = sha } = {}) {
   const repo = mkdtempSync(path.join(os.tmpdir(), 'guard-locate-'));
   execFileSync('git', ['init', '-q', repo]);
   process.env.CI_LOCAL_GUARD_LOG_DIR = path.join(repo, 'logs');
   const deps = {
-    discover: () => ({ identity: { repo, head: sha, repository: 'o/r' }, workflows: [workflow] }),
-    get: endpoint => endpoint.endsWith('/runs/7') ? run : endpoint.includes('/jobs?') ? { total_count: jobs.length, jobs } : run,
+    discover: () => ({ identity: { repo, head: identityHead, repository: 'o/r' }, workflows: [workflow] }),
+    get: endpoint => {
+      if (endpoint.includes('/jobs?')) return { total_count: jobs.length, jobs };
+      if (endpoint.includes('/runs?')) {
+        if (listingFails) throw new Error('Invalid GitHub metadata endpoint');
+        return listing ?? { workflow_runs: [] };
+      }
+      return selectedRun;
+    },
     fetchLog: (repository, id) => { if (!logs[id]) throw new Error('expired'); return logs[id]; },
     platform: 'linux',
   };
@@ -113,6 +132,76 @@ test('a missing log, a runner setup failure and running jobs are reported, never
     assert.equal(report.failures[1].stepKind, 'runner-setup');
     assert.deepEqual(report.pending, [{ runId: 7, job: 'lint', status: 'in_progress' }]);
   } finally { done(); }
+});
+
+test('a non-TAP Playwright summary still yields located failed tests', async () => {
+  const { repo, deps, done } = fixture([job(1, 'test (ubuntu-latest)', 'failure', [step(2, 'Run npm test', 5, 8, 'failure')])], { 1: playwrightLog });
+  try {
+    const report = await locateCi(locateOptions(['--repo', repo, '--run', '7']), deps);
+    assert.equal(report.outcome, 'located');
+    const tests = report.failures[0].observed.failedTests;
+    assert.deepEqual(tests.map(({ name, location, failedAt, message, source }) => ({ name, location, failedAt, message, source })), [
+      { name: 'keeps a 1–10 presenter distribution ...', location: { file: 'tests/e2e/spa/scale-distribution-layout.spec.mjs', line: 8, column: 1 }, failedAt: null, message: [], source: 'playwright' },
+      { name: '1. join ... › traffic baseline ...', location: { file: 'tests/e2e/spa/student-workflow.spec.mjs', line: 766, column: 5 }, failedAt: null, message: [], source: 'playwright' }]);
+    assert.ok(tests.every(test => test.evidence.command === 'read-evidence'), 'each entry keeps a reader into the saved log');
+    assert.ok(report.nextActions.some(action => action.kind === 'read-failed-test' && action.location?.file === 'tests/e2e/spa/scale-distribution-layout.spec.mjs'));
+    assert.equal(summarizeLocate(report).failures[0].failedTests[0].source, 'playwright');
+  } finally { done(); }
+});
+
+const mainSha = 'b'.repeat(40);
+const devSha = 'c'.repeat(40);
+const workflowRun = { id: 7, run_attempt: 1, head_sha: mainSha, head_branch: 'main', event: 'workflow_run', status: 'completed', conclusion: 'failure',
+  run_started_at: '2026-10-01T00:01:10Z', path: '.github/workflows/ci.yml', repository: { full_name: 'o/r' }, workflow_id: 3 };
+const triggerListing = { workflow_runs: [
+  { id: 8, head_sha: devSha, head_branch: 'dev', status: 'in_progress', conclusion: null, run_started_at: '2026-10-01T00:01:05Z' },
+  { id: 7, head_sha: mainSha, head_branch: 'main', status: 'completed', conclusion: 'failure', run_started_at: '2026-10-01T00:01:10Z' },
+  { id: 6, head_sha: devSha, head_branch: 'dev', status: 'completed', conclusion: 'success', run_started_at: '2026-10-01T00:00:40Z' },
+  { id: 5, head_sha: devSha, head_branch: 'dev', status: 'completed', conclusion: 'success', run_started_at: '2026-10-01T00:00:10Z' }] };
+
+test('a workflow_run failure is located to the triggering run commit, keeping its own head visible', async () => {
+  const { repo, deps, done } = fixture([job(1, 'test (ubuntu-latest)', 'failure', [step(2, 'Run npm test', 5, 8, 'failure')])], { 1: log },
+    { run: workflowRun, listing: triggerListing, identityHead: devSha });
+  try {
+    const report = await locateCi(locateOptions(['--repo', repo, '--run', '7']), deps);
+    assert.equal(report.outcome, 'located');
+    const [summary] = report.runs;
+    assert.equal(summary.sha, devSha);
+    assert.equal(summary.branch, 'dev');
+    assert.equal(summary.shaSource, 'workflow-run-trigger');
+    assert.deepEqual(summary.runHead, { sha: mainSha, branch: 'main' });
+    assert.equal(report.failures[0].sha, devSha, 'the failure points at the triggering commit');
+    assert.deepEqual(report.failures[0].local, { headMatches: true, replayable: true, sameOsAsRunner: true });
+    assert.ok(report.nextActions.find(action => action.kind === 'replay-failed-job').args.includes(devSha), 'replay targets the triggering commit');
+    assert.ok(!report.nextActions.some(action => action.kind === 'confirm-failed-commit'));
+    const summarized = summarizeLocate(report);
+    assert.equal(summarized.runs[0].shaSource, 'workflow-run-trigger');
+    assert.deepEqual(summarized.runs[0].runHead, { sha: mainSha, branch: 'main' });
+  } finally { done(); }
+});
+
+test('a workflow_run failure without an identifiable trigger keeps its own head and asks for manual confirmation', async () => {
+  const cases = [
+    ['no candidate runs', { listing: { workflow_runs: [{ id: 9, head_sha: mainSha, head_branch: 'main', status: 'completed', conclusion: 'success', run_started_at: '2026-10-01T00:00:40Z' }] } }],
+    ['listing unavailable', { listingFails: true }]];
+  for (const [label, options] of cases) {
+    const { repo, deps, done } = fixture([job(1, 'test (ubuntu-latest)', 'failure', [step(2, 'Run npm test', 5, 8, 'failure')])], { 1: log },
+      { run: workflowRun, identityHead: devSha, ...options });
+    try {
+      const report = await locateCi(locateOptions(['--repo', repo, '--run', '7']), deps);
+      assert.equal(report.outcome, 'located', label);
+      const [summary] = report.runs;
+      assert.equal(summary.shaSource, 'run-head-fallback', label);
+      assert.equal(summary.sha, mainSha, label);
+      assert.deepEqual(summary.runHead, { sha: mainSha, branch: 'main' }, label);
+      assert.equal(report.failures[0].sha, mainSha, label);
+      assert.equal(report.failures[0].local.headMatches, false, label);
+      const confirm = report.nextActions.find(action => action.kind === 'confirm-failed-commit');
+      assert.deepEqual(confirm, { kind: 'confirm-failed-commit', runId: 7,
+        reason: 'the triggering run of this workflow_run failure could not be identified; its own head is reported, so confirm which commit actually failed',
+        automatic: false }, label);
+    } finally { done(); }
+  }
 });
 
 test('options fail closed', () => {

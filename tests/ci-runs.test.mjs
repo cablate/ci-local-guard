@@ -711,3 +711,14 @@ test('removed advanced commands reject before project or network execution and d
     assert.throws(() => githubGet(route, { execute: () => { throw Error('must not execute'); } }), /Invalid GitHub metadata endpoint/);
   }
 });
+
+test('the repo-wide completed-runs listing used for workflow_run triggers is allowed', () => {
+  const seen = [];
+  const result = githubGet('repos/example/project/actions/runs?status=completed&per_page=100&page=1', { execute: (...args) => {
+    seen.push(args);
+    return { status: 0, stdout: '{"workflow_runs": []}' };
+  } });
+  assert.deepEqual(result, { workflow_runs: [] });
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0][1].some(arg => arg.includes('actions/runs?status=completed&per_page=100&page=1')));
+});

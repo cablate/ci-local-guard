@@ -295,3 +295,23 @@ test('lastActivity keeps pointing at the failed main step, not the post-step cle
   assert.equal(parsed.lastMain.step, 'npm test');
   assert.equal(parsed.last.step, 'Post Cache');
 });
+
+test('a Playwright summary block in a failed step lists its failed tests', async t => {
+  const f = fixture(t);
+  const d = daemon();
+  const log = '[ci-local-guard] stage: ci-replay\n'
+    + line({ msg: 'Run Main npm run check', stage: 'Main', step: 'npm run check', stepID: ['1'] })
+    + line({ msg: '  2 failed\n    tests/e2e/spa/scale-distribution-layout.spec.mjs:8:1 › keeps a 1–10 presenter distribution ...\n    tests/e2e/spa/student-workflow.spec.mjs:766:5 › 1. join ... › traffic baseline ...\n  1 flaky\n', raw_output: true, stage: 'Main', step: 'npm run check', stepID: ['1'] })
+    + line({ msg: 'Failure', stage: 'Main', step: 'npm run check', stepID: ['1'], stepResult: 'failure' })
+    + line({ msg: 'Job failed', jobResult: 'failure' });
+  const x = deps(f, d, { execute: async logFile => {
+    writeFileSync(logFile, log);
+    throw Object.assign(new Error('exit'), { logFile, durationMs: 9,
+      executionFailure: { exitCode: 1, causes: ['child-exit-nonzero'] } });
+  } });
+  const report = await replayCi(options(f), x.deps);
+  assert.equal(report.outcome, 'failed');
+  assert.deepEqual(report.failures[0].observed.failedTests, [
+    'tests/e2e/spa/scale-distribution-layout.spec.mjs:8 › keeps a 1–10 presenter distribution ...',
+    'tests/e2e/spa/student-workflow.spec.mjs:766 › 1. join ... › traffic baseline ...']);
+});

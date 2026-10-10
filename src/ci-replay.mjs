@@ -9,6 +9,7 @@ import { createDockerResources, dockerCommand } from './docker-resources.mjs';
 import { evidenceVersion } from './evidence.mjs';
 import { cleanGitEnvironment } from './project.mjs';
 import { executionTimeout, runLogged } from './run-log.mjs';
+import { extractFailedTests, formatFailedTest } from './test-reports.mjs';
 import { actResourceNames, jobClosure, parseWorkflow, runnerLabels } from './workflow-model.mjs';
 
 // Resource ownership depends on act's container naming, so the version is pinned.
@@ -326,10 +327,14 @@ function summarize(report, parsed, workflow, logFile) {
       const job = byId.get(leg.job);
       const declared = /^\d+$/.test(step.id) ? job?.steps[Number(step.id)] : job?.steps.find(item => item.id === step.id);
       const environmentMismatch = detectEnvironmentMismatch(step.tail);
+      // Playwright/Vitest summary lists supplement TAP "not ok" names.
+      const frameworkTests = extractFailedTests(step.tail.join('\n')).map(formatFailedTest)
+        .filter(name => !step.failedTests.includes(name));
+      const failedTests = [...step.failedTests, ...frameworkTests].slice(0, 20);
       report.failures.push({ job: leg.job, matrix: leg.matrix, step: { id: step.id, name: step.name, stage: step.stage },
         workflowLocation: declared ? { path: workflow.path, line: declared.line } : null,
         command: declared?.run ? declared.run.slice(0, 2000) : null, action: declared?.uses || null,
-        observed: { lastLines: step.tail, failedTests: step.failedTests,
+        observed: { lastLines: step.tail, failedTests,
           ...(environmentMismatch ? { environmentMismatch } : {}),
           meaning: 'Observed output of the failed step; not a diagnosed root cause.' },
         evidence: { id: 'replay-log', startByte: step.startByte, endByte: step.endByte,
