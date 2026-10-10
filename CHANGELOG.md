@@ -7,6 +7,13 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ### Fixed
 - Detect explicit Docker daemon commands and Docker build actions before isolated replay, including job dependencies. Report the missing capability instead of a misleading workflow failure.
+- `ci check`/`ci verify` read `self-hosted-runner.labels` from the committed `.github/actionlint.yaml` (and accept a repeatable `--runner-label`), so third-party runner labels (Blacksmith, Namespace, self-hosted) no longer produce false unknown-label findings; the applied labels and their sources are recorded in the report's `baseline` field.
+- `ci verify` plans replays with the same `--platform` mapping as `ci replay`: mapped legs count as locally replayable (`imageSource: caller-mapped`) and their runner-label findings become coverage notes instead of expected failures. Static findings from workflows the event does not trigger move to `staticOutsideTrigger`, and replays that failed only on well-known image gaps (missing shared libraries, missing sudo) are reported as environment mismatches, not project failures.
+- `ci history` no longer bills skipped and never-started jobs; they are counted as `skippedJobs` instead.
+- `ci diff` probes the literal branches and tags the workflows name (and an escapee for ignore lists), so filter changes scoped to custom branches are caught; `--json` is accepted like the other ci commands, and blocked option errors name the unsupported flag.
+- `ci locate` resolves the triggering run for `workflow_run` events and reports its commit instead of the default branch head, keeping the run's own head under `runHead`.
+- `ci locate` and `ci replay` parse Playwright summary blocks and Vitest/Jest `FAIL` lines into `failedTests`, not just TAP.
+- A replay's `lastActivity` no longer points at action post steps after a failure (`lastFailure` names the failed step) and post-step output is marked `post`.
 
 ## [0.2.0] - 2026-10-09
 

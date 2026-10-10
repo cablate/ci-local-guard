@@ -31,7 +31,7 @@ node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary --output 
 
 verify 回答一個問題：這個 commit 推上去，什麼會失敗？它依 branch、tag、path 篩選判斷這次 push（或 --event pull_request）會觸發哪些 workflows，執行靜態檢查，再重播每個會被觸發的 Linux job leg。被重播 job needs 的 jobs 會一併執行。變更檔案來自 --base（push 預設為分支的 upstream，pull_request 預設為 origin 的預設分支）；判斷不了時，有 path 篩選的 workflow 標為未知，仍會檢查。
 
-verdict 是一句話的總結。expectedFailures 列出靜態 findings 與重播失敗的 step，附命令與 log 位置。passedLocally 列出已重播通過的 leg。hostedOnly 列出只有 GitHub 能檢查的部分：Windows 或 macOS runner、用到 secrets 或部署環境的 jobs。notVerified 列出本機無法檢查的項目與原因，例如缺 act，或只被呼叫的 reusable workflow。notTriggered 列出這個事件不會啟動的 workflows，以及排除它的篩選條件。
+verdict 是一句話的總結。expectedFailures 列出靜態 findings 與重播失敗的 step，附命令與 log 位置。passedLocally 列出已重播通過的 leg。hostedOnly 列出只有 GitHub 能檢查的部分：Windows 或 macOS runner、用到 secrets 或部署環境的 jobs。notVerified 列出本機無法檢查的項目與原因，例如缺 act，或只被呼叫的 reusable workflow。notTriggered 列出這個事件不會啟動的 workflows，以及排除它的篩選條件；這些 workflow 的靜態 findings 改列在 staticOutsideTrigger，看得到但不算失敗。你用 --platform 映射過的 label，其 runner-label finding 記在 staticCheck.mappedRunnerLabels，不進 expectedFailures。重播只因本機映像檔缺少 Hosted runner 預裝的東西（例如系統函式庫）而失敗時，會以 stage replay-environment 列在 notVerified，不算預期失敗。
 
 | 結果 | 意義 | Exit |
 |---|---|---|
@@ -40,7 +40,7 @@ verdict 是一句話的總結。expectedFailures 列出靜態 findings 與重播
 | blocked | 輸入無效或沒有 workflows | 2 |
 | incomplete | 有本機檢查無法執行或完成；見 notVerified | 3 |
 
---static-only 跳過重播，做快速檢查。重播選項 --platform、--pull、--timeout、--act-binary 會直接傳下去。
+--static-only 跳過重播，做快速檢查。重播選項 --platform、--pull、--timeout、--act-binary 會直接傳下去，--platform 也決定哪些 leg 算本機可重播。--runner-label（可重複）為靜態檢查宣告 runner label，作用同 ci check。
 
 ### 量測失敗的代價
 
@@ -49,7 +49,7 @@ node "<tool-directory>/cli.mjs" ci history --repo "<project>" --workflow ci.yml 
 node "<tool-directory>/cli.mjs" ci history --repo "<project>" --workflow ci.yml --input <new-export.json> --reproduce --summary
 ```
 
-history 用 gh 唯讀讀取一個 workflow 已完成的 runs，包含被重跑取代的較早 attempts。baseline 列出成功 run 的等待時間（中位數與 p90）與各 job 的中位耗時，可以看出是哪個 job 決定了等待時間。failures 列出失敗的 attempts 數，以及它們耗掉的等待時間與計費分鐘。計費分鐘把每個 job 進位到整分鐘，不含 runner 倍率與免費額度，只能當估計值。
+history 用 gh 唯讀讀取一個 workflow 已完成的 runs，包含被重跑取代的較早 attempts。baseline 列出成功 run 的等待時間（中位數與 p90）與各 job 的中位耗時，可以看出是哪個 job 決定了等待時間。failures 列出失敗的 attempts 數，以及它們耗掉的等待時間與計費分鐘。計費分鐘只把有啟動的 job 進位到整分鐘；skipped 與從未啟動的 job 不計費，另外以 skippedJobs 計數列出，且不含 runner 倍率與免費額度，只能當估計值。
 
 --reproduce 會對每個失敗的 commit 執行 ci verify（最多 --reproduce-limit 個，預設 5），並把每個失敗的 Hosted job 分類：
 
@@ -69,7 +69,7 @@ node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
 node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --run <run-id> --summary
 ```
 
-locate 用 gh 唯讀讀取 run 的 jobs，以及失敗 jobs 的 log。預設取 HEAD commit 的所有 runs；--head 指定其他 commit，--workflow 只看一份 workflow 檔，--run（可加 --attempt）指定一個 run。每個失敗的 job 會列出失敗的 step、對應的 workflow 行號與命令、錯誤標註，以及最後幾行輸出。如果該 step 有 TAP 輸出，failedTests 會列出每個失敗測試的檔案與行號、assertion 失敗的那一行，以及錯誤訊息的前幾行（包含實際值與預期值）。
+locate 用 gh 唯讀讀取 run 的 jobs，以及失敗 jobs 的 log。預設取 HEAD commit 的所有 runs；--head 指定其他 commit，--workflow 只看一份 workflow 檔，--run（可加 --attempt）指定一個 run。每個失敗的 job 會列出失敗的 step、對應的 workflow 行號與命令、錯誤標註，以及最後幾行輸出。如果該 step 有 TAP 輸出，failedTests 會列出每個失敗測試的檔案與行號、assertion 失敗的那一行，以及錯誤訊息的前幾行（包含實際值與預期值）；有 Playwright 摘要區塊（N failed）或 Vitest／Jest 的 FAIL 行時，同樣會解析進 failedTests。workflow_run 觸發的 run 本身會指向預設分支，所以 locate 會找出觸發它的 run、改報那個 commit（shaSource），run 自己的 head 則保留在 runHead。
 
 失敗 job 的 log 會存在 .git/ci-local-guard/hosted-logs，下次直接重用。報告不包含整份 log，而是給出該 step 區段與每個失敗測試的 read-evidence 參數，讓 AI 只讀需要的部分。nextActions 也會建議要打開的 workflow 行、本機與 runner 是同一種 OS 時可直接執行的命令、Linux job 對同一個 commit 的 ci replay，以及再次推送前的 ci verify。如果 run 對應的 commit 與你的 HEAD 不同，也會註明。
 
@@ -89,7 +89,7 @@ node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --summary
 node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --base <ref> --head <ref> --summary
 ```
 
-diff 比較兩個 commit 已提交的 workflows，回答：同一個事件、同一組變更檔案下，CI 是否檢查得比較少？沒給 --base 時，比較 HEAD 與它從 origin 預設分支分出來的那一點。對 push 與 pull_request 的篩選條件，它把每個追蹤中的檔案單獨當成一次變更，分別試推送到預設分支、推送到其他分支、推送 tag，以及發 pull request 到預設分支或其他分支。接著比較 jobs、matrix legs、runner、if 與 continue-on-error 設定，以及每個 job 執行的命令（包含本機 composite action 的 steps）。
+diff 比較兩個 commit 已提交的 workflows，回答：同一個事件、同一組變更檔案下，CI 是否檢查得比較少？沒給 --base 時，比較 HEAD 與它從 origin 預設分支分出來的那一點。對 push 與 pull_request 的篩選條件，它把每個追蹤中的檔案單獨當成一次變更，分別試推送到預設分支、推送到其他分支、推送 tag，以及發 pull request 到預設分支或其他分支；workflow 自己點名的 literal branch／tag 也會各探測一次，限定自訂分支的 paths 篩選因此比較得到，ignore 清單則補一個不被它涵蓋的探針名。接著比較 jobs、matrix legs、runner、if 與 continue-on-error 設定，以及每個 job 執行的命令（包含本機 composite action 的 steps）。
 
 每項變更都有一個效果：
 
@@ -114,7 +114,7 @@ diff 比較兩個 commit 已提交的 workflows，回答：同一個事件、同
 node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
 ```
 
-探索讀的是已提交版本（HEAD 或 --head），不讀未完成的修改。每份 GitHub 頂層 workflow 會列出觸發事件、jobs、needs、matrix 數量，以及各 step 的 run 命令與行號。ciCommands 把這些命令去重列出，並標出它們呼叫的 package scripts，讓 AI 沿用專案自己的檢查，不必猜。每個 job 會標成可重播、只能靠 Hosted（例如 Windows、macOS runner），或無法判定（reusable workflow、動態 matrix、runs-on 運算式）。
+探索讀的是已提交版本（HEAD 或 --head），不讀未完成的修改。每份 GitHub 頂層 workflow 會列出觸發事件、jobs、needs、matrix 數量，以及各 step 的 run 命令與行號。ciCommands 把這些命令去重列出，並標出它們呼叫的 package scripts，讓 AI 沿用專案自己的檢查，不必猜。每個 job 會標成可重播、只能靠 Hosted（例如 Windows、macOS runner），或無法判定（reusable workflow、動態 matrix、runs-on 運算式）。可重播的 leg 會附上 runner labels 與會用到的本機映像檔（imageSource 為 guard-default，或 --platform 映射時的 caller-mapped），與 ci replay、ci verify 用同一份映射。
 
 tools 欄位顯示 actionlint、zizmor、act、Linux Docker engine 與 gh 是否可用；只會執行它們的版本命令。nextActions 以參數陣列給出下一步命令。只會主動建議重播 pull_request 會觸發的 workflow，因為發布或部署 workflow 可能有副作用。GitLab、Jenkins、Woodpecker、Nx、Turborepo、Dagger、Earthly、Bazel 的根目錄設定只列出、不分析。workflow 結構是 YAML 宣告的內容：觸發條件、if 與運算式都不會求值。
 
@@ -127,7 +127,7 @@ node "<tool-directory>/cli.mjs" ci check --repo "<project>" --head <commit> --pr
 
 目前支援 actionlint 1.7.12 與 zizmor 1.30.1，不自動下載工具。actionlint 使用 Guard 既有快取或 ACTIONLINT_BIN；zizmor 接受 ZIZMOR_BIN。兩者都可用 --binary 明確指定絕對路徑。版本相符不代表執行檔可信：請從官方來源取得，並在執行前核對 checksum。
 
-檢查只把已提交的頂層 workflow blobs 複製到暫存目錄，不執行 Git checkout hooks、smudge filters、專案測試或 workflows。這是工具基準掃描：不載入專案的工具設定、停用 zizmor 行內忽略規則，也停用 actionlint 的 ShellCheck／pyflakes 整合。每次檢查共用 30 秒期限，最多接受 128 份 workflows（每份 1 MiB、總計 8 MiB）；超限或輸出格式錯誤都不算通過。--summary 最多顯示 20 項 findings 並列出總數。
+檢查只把已提交的頂層 workflow blobs 複製到暫存目錄，不執行 Git checkout hooks、smudge filters、專案測試或 workflows。這是工具基準掃描：不載入專案的工具設定，唯一例外是已提交的 .github/actionlint.yaml（或 .yml、.actionlint.yaml）裡的 self-hosted-runner.labels——已宣告的 runner labels（Blacksmith、Namespace、自架等）不會再被報成未知 label；也可以用可重複的 --runner-label 另外宣告。baseline 欄位記錄套用了哪些 labels、來自哪裡。zizmor 行內忽略規則停用，actionlint 的 ShellCheck／pyflakes 整合也停用。每次檢查共用 30 秒期限，最多接受 128 份 workflows（每份 1 MiB、總計 8 MiB）；超限或輸出格式錯誤都不算通過。--summary 最多顯示 20 項 findings 並列出總數。
 
 ### 在本機重播 job
 
@@ -155,7 +155,7 @@ node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/
 - 不掛載 Docker socket、關閉 cache server，job 容器以 init 程序啟動，孤兒程序會像在 Hosted VM 上一樣被回收。
 - image、預裝工具與權限都和 GitHub Hosted runner 不同。job 用到的 actions 第一次可能需要下載。
 
-執行前，Guard 會算出 act 這些 jobs 會用到的所有 container、network、volume 名稱，只要有任何一個已存在就停止。結束後（包含逾時或 Ctrl-C），只移除標上本次 label 的容器、名稱完全相符的資源，以及這些容器的匿名 volumes。不做 prune，也不用前綴比對。在 Linux 上，清理期間再按一次 Ctrl-C 會記為 second-interrupt-during-cleanup，不會中斷移除。act 共用的 act-toolcache volume 與下載的 images 會保留，列在 resources.shared。若無法確認 act 已終止，不會刪任何東西，結果為 incomplete。如果 Guard 程序本身被強制結束，資源會留下；它們都標有 ci-local-guard.run label，下次重播同一個 job 時會以 docker-resource-collision 停止並列出這些資源。setup action 安裝的工具（例如 Python、Java）保存在 act-toolcache，只有第一次重播需要下載。執行中斷時，execution.lastActivity 會指出最後有輸出的 step，以及它已經多久沒有輸出。
+執行前，Guard 會算出 act 這些 jobs 會用到的所有 container、network、volume 名稱，只要有任何一個已存在就停止。結束後（包含逾時或 Ctrl-C），只移除標上本次 label 的容器、名稱完全相符的資源，以及這些容器的匿名 volumes。不做 prune，也不用前綴比對。在 Linux 上，清理期間再按一次 Ctrl-C 會記為 second-interrupt-during-cleanup，不會中斷移除。act 共用的 act-toolcache volume 與下載的 images 會保留，列在 resources.shared。若無法確認 act 已終止，不會刪任何東西，結果為 incomplete。如果 Guard 程序本身被強制結束，資源會留下；它們都標有 ci-local-guard.run label，下次重播同一個 job 時會以 docker-resource-collision 停止並列出這些資源。setup action 安裝的工具（例如 Python、Java）保存在 act-toolcache，只有第一次重播需要下載。執行中斷時，execution.lastActivity 會指出最後有輸出的 step，以及它已經多久沒有輸出；action post step 的輸出會標上 post，step 失敗後 execution.lastFailure 會指向該失敗 step。
 
 | 結果 | 意義 | Exit |
 |---|---|---|
@@ -164,7 +164,7 @@ node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/
 | blocked | 缺輸入、act、Docker、image，或資源名稱已被占用；沒有執行 | 2 |
 | incomplete | 逾時、取消、workflow step 以外的 job 失敗，或清理未確認 | 3 |
 
-step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow 行號、run 命令、輸出的最後幾行，以及 TAP「not ok」測試名稱。這些是觀察到的輸出，不是診斷出的原因。evidence.reader 是讀取保留 log 中該 step 區段的 read-evidence 參數。nextActions 會建議讀該區段、打開 workflow 那一行、在工作目錄執行該命令，並在提交修正後再重播。通過只涵蓋 coverage.replayed；coverage.notReplayed 與 coverage.notSelected 要在 Hosted CI 確認。
+step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow 行號、run 命令、輸出的最後幾行，以及 TAP「not ok」測試名稱。這些是觀察到的輸出，不是診斷出的原因。輸出符合已知的 runner 映像檔缺口（缺系統函式庫、缺 sudo）時，observed.environmentMismatch 會標明，nextActions 建議改用更完整的映像檔（例如 catthehacker/ubuntu:full-24.04）；ci verify 會把這類重播算成環境差距，不是專案失敗。evidence.reader 是讀取保留 log 中該 step 區段的 read-evidence 參數。nextActions 會建議讀該區段、打開 workflow 那一行、在工作目錄執行該命令，並在提交修正後再重播。通過只涵蓋 coverage.replayed；coverage.notReplayed 與 coverage.notSelected 要在 Hosted CI 確認。
 
 報告使用 ci-local-guard/ci-inventory/v1、ci-local-guard/ci-check/v1、ci-local-guard/ci-replay/v1、ci-local-guard/ci-locate/v1 與 ci-local-guard/ci-diff/v1。閱讀 outcome 時也要看 identity、scope、coverage、issues。執行最佳化實驗仍在規劃，尚未實作。既有命令的 schemas 與 exit codes 不變。
 

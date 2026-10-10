@@ -7,6 +7,13 @@
 
 ### 修正
 - 隔離重播前辨識明確的 Docker daemon 命令與 Docker 建置 action，包含相依 job；提早回報缺少能力，避免誤判為 workflow 本身失敗。
+- `ci check`／`ci verify` 會讀已提交 `.github/actionlint.yaml` 裡的 `self-hosted-runner.labels`（也接受可重複的 `--runner-label`），第三方 runner labels（Blacksmith、Namespace、自架）不再產生假的未知 label findings；套用的 labels 與來源記在 report 的 `baseline` 欄位。
+- `ci verify` 規劃重播時改用與 `ci replay` 相同的 `--platform` 映射：被映射的 leg 視為本機可重播（`imageSource: caller-mapped`），對應的 runner-label findings 變成覆蓋註記而不是預期失敗。該事件不會觸發的 workflow，其靜態 findings 移到 `staticOutsideTrigger`；只因已知映像檔缺口（缺系統函式庫、缺 sudo）失敗的重播，改報為環境差距而非專案失敗。
+- `ci history` 不再把 skipped 與從未啟動的 job 計入計費分鐘，改以 `skippedJobs` 計數列出。
+- `ci diff` 會探測 workflow 自己點名的 literal branches／tags（ignore 清單則補一個不被涵蓋的探針名），限定自訂分支的篩選變更抓得到了；`--json` 與其他 ci 命令一致被接受，選項錯誤會指名不支援的旗標。
+- `ci locate` 對 `workflow_run` 觸發的 run 找出觸發它的 run、改報那個 commit，而不是預設分支頭；run 自己的 head 保留在 `runHead`。
+- `ci locate` 與 `ci replay` 會把 Playwright 摘要區塊與 Vitest／Jest 的 `FAIL` 行解析進 `failedTests`，不再只支援 TAP。
+- 重播的 `lastActivity` 在失敗後不再指向 action 的 post step（`lastFailure` 指名失敗 step），post step 的輸出會標上 `post`。
 
 ## [0.2.0] - 2026-10-09
 
