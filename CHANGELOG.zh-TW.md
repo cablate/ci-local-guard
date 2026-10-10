@@ -5,6 +5,12 @@
 
 ## [未發布]
 
+## [0.2.1] - 2026-10-11
+
+兩份真實專案實測回報（#2、#4）的修正：`ci verify` 的第三方 runner-label 基線與平台映射、計費分鐘與失敗 run 定位、隨盤點規模縮放的 discovery 預算、離線命令對無效輸入的 JSON report，以及 Hosted 慣例的 replay step 顯示名。
+
+**升級：** 更新 GitHub archive／clone 或 Claude marketplace plugin，確認 `--version` 顯示 0.2.1。無需遷移；命令、設定與 receipts 都不變。
+
 ### 修正
 - 隔離重播前辨識明確的 Docker daemon 命令與 Docker 建置 action，包含相依 job；提早回報缺少能力，避免誤判為 workflow 本身失敗。
 - `ci check`／`ci verify` 會讀已提交 `.github/actionlint.yaml` 裡的 `self-hosted-runner.labels`（也接受可重複的 `--runner-label`），第三方 runner labels（Blacksmith、Namespace、自架）不再產生假的未知 label findings；套用的 labels 與來源記在 report 的 `baseline` 欄位。

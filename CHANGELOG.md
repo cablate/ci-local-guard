@@ -5,6 +5,12 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-11
+
+Fixes from two real-project field reports (#2, #4): third-party runner-label baselines and platform mapping in `ci verify`, billable-minutes and failed-run locating, a discovery budget that scales with inventory, JSON reports for invalid offline input, and hosted-style replay step names.
+
+**Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.2.1. No migration needed; commands, configuration and receipts are unchanged.
+
 ### Fixed
 - Detect explicit Docker daemon commands and Docker build actions before isolated replay, including job dependencies. Report the missing capability instead of a misleading workflow failure.
 - `ci check`/`ci verify` read `self-hosted-runner.labels` from the committed `.github/actionlint.yaml` (and accept a repeatable `--runner-label`), so third-party runner labels (Blacksmith, Namespace, self-hosted) no longer produce false unknown-label findings; the applied labels and their sources are recorded in the report's `baseline` field.

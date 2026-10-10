@@ -1,6 +1,6 @@
 {
   "name": "ci-local-guard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Use project-owned CI checks and bounded evidence through the bundled CI Local Guard CLI.",
   "author": {
     "name": "CI Local Guard maintainers"
