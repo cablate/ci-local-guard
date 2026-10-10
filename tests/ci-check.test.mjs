@@ -76,6 +76,89 @@ test('version drift, malformed output, source mutation and tool crashes never be
   assert.equal(missing.execution.status, 'not-run');
 });
 
+test('committed actionlint runner labels feed the baseline config and are reported as its source', async t => {
+  const { root, git } = fixture(t);
+  writeFileSync(path.join(root, '.github/workflows/ci.yml'),
+    'on: push\njobs:\n  build:\n    runs-on: blacksmith-2vcpu-ubuntu-2404\n    steps:\n      - run: echo ok\n');
+  writeFileSync(path.join(root, '.github/actionlint.yaml'),
+    'self-hosted-runner:\n  labels:\n    - blacksmith-2vcpu-ubuntu-2404\n');
+  git('add', '.'); git('commit', '-m', 'runner labels');
+  const finding = { filepath: '.github/workflows/ci.yml', line: 4, column: 7, kind: 'runner-label',
+    message: 'label "blacksmith-2vcpu-ubuntu-2404" is unknown' };
+  const report = await checkCi({ repo: root, binary: process.execPath }, { executeTool: async (binary, args) => {
+    if (args[0] === '-version') return { stdout: '1.7.12\n', logFile: null };
+    const config = readFileSync(args[args.indexOf('-config-file') + 1], 'utf8');
+    assert.equal(config, 'self-hosted-runner:\n  labels:\n    - blacksmith-2vcpu-ubuntu-2404\n');
+    return { stdout: `${JSON.stringify([finding])}\n`, logFile: null };
+  } });
+  assert.equal(report.outcome, 'findings');
+  assert.deepEqual(report.findings, [{ provider: 'actionlint', rule: 'runner-label', severity: 'error',
+    message: finding.message, location: { path: '.github/workflows/ci.yml', line: 4, column: 7 } }]);
+  assert.deepEqual(report.baseline, { runnerLabels: ['blacksmith-2vcpu-ubuntu-2404'],
+    sources: ['project:.github/actionlint.yaml'] });
+  assert.equal(report.coverage.policy, 'fixed-baseline-project-runner-labels-only');
+});
+
+test('cli runner labels union with committed labels in order and are validated', async t => {
+  const { root, git } = fixture(t);
+  writeFileSync(path.join(root, '.github/workflows/ci.yml'),
+    'on: push\njobs:\n  build:\n    runs-on: self-hosted-a\n    steps:\n      - run: echo ok\n');
+  writeFileSync(path.join(root, '.github/actionlint.yaml'),
+    'self-hosted-runner:\n  labels:\n    - self-hosted-a\n    - self-hosted-b\n');
+  git('add', '.'); git('commit', '-m', 'labels');
+  let config;
+  const report = await checkCi({ repo: root, binary: process.execPath, runnerLabels: ['self-hosted-c', 'self-hosted-a'] },
+    { executeTool: async (binary, args) => {
+      if (args[0] === '-version') return { stdout: '1.7.12\n', logFile: null };
+      config = readFileSync(args[args.indexOf('-config-file') + 1], 'utf8');
+      return { stdout: '[]\n', logFile: null };
+    } });
+  assert.equal(config, 'self-hosted-runner:\n  labels:\n    - self-hosted-a\n    - self-hosted-b\n    - self-hosted-c\n');
+  assert.deepEqual(report.baseline, { runnerLabels: ['self-hosted-a', 'self-hosted-b', 'self-hosted-c'],
+    sources: ['project:.github/actionlint.yaml', 'cli-option'] });
+  for (const bad of [['bad label'], [''], ['x'.repeat(129)], [42], 'self-hosted-a']) {
+    await assert.rejects(checkCi({ repo: root, binary: process.execPath, runnerLabels: bad },
+      { executeTool: async () => ({ stdout: '1.7.12\n', logFile: null }) }), { message: 'invalid-runner-label' });
+  }
+});
+
+test('invalid committed labels become an issue and are not adopted while cli labels still apply', async t => {
+  const { root, git } = fixture(t);
+  writeFileSync(path.join(root, '.github/actionlint.yaml'),
+    'self-hosted-runner:\n  labels:\n    - good-label\n    - bad label!\n');
+  git('add', '.'); git('commit', '-m', 'bad labels');
+  let config;
+  const report = await checkCi({ repo: root, binary: process.execPath, runnerLabels: ['cli-label'] },
+    { executeTool: async (binary, args) => {
+      if (args[0] === '-version') return { stdout: '1.7.12\n', logFile: null };
+      config = readFileSync(args[args.indexOf('-config-file') + 1], 'utf8');
+      return { stdout: '[]\n', logFile: null };
+    } });
+  assert.deepEqual(report.issues.filter(issue => issue.code === 'invalid-actionlint-runner-labels'),
+    [{ code: 'invalid-actionlint-runner-labels', path: '.github/actionlint.yaml' }]);
+  assert.equal(config, 'self-hosted-runner:\n  labels:\n    - cli-label\n');
+  assert.deepEqual(report.baseline, { runnerLabels: ['cli-label'], sources: ['cli-option'] });
+});
+
+test('undeclared runner labels stay in findings; cli-only labels build the baseline alone', async t => {
+  const { root, git } = fixture(t);
+  writeFileSync(path.join(root, '.github/workflows/ci.yml'),
+    'on: push\njobs:\n  build:\n    runs-on: undeclared-runner\n    steps:\n      - run: echo ok\n');
+  git('add', '.'); git('commit', '-m', 'undeclared');
+  const finding = { filepath: '.github/workflows/ci.yml', line: 4, column: 7, kind: 'runner-label',
+    message: 'label "undeclared-runner" is unknown' };
+  const report = await checkCi({ repo: root, binary: process.execPath, runnerLabels: ['cli-only-label'] },
+    { executeTool: async (binary, args) => {
+      if (args[0] === '-version') return { stdout: '1.7.12\n', logFile: null };
+      const config = readFileSync(args[args.indexOf('-config-file') + 1], 'utf8');
+      assert.ok(config.includes('- cli-only-label'));
+      return { stdout: `${JSON.stringify([finding])}\n`, logFile: null };
+    } });
+  assert.equal(report.outcome, 'findings');
+  assert.deepEqual(report.findings.map(finding => finding.rule), ['runner-label']);
+  assert.deepEqual(report.baseline, { runnerLabels: ['cli-only-label'], sources: ['cli-option'] });
+});
+
 test('stdout capture is opt-in, redacted, separate from stderr and retained on nonzero exit', async t => {
   const { root } = fixture(t);
   const env = { ...process.env, TEST_SECRET_TOKEN: 'capture-secret-12345' };

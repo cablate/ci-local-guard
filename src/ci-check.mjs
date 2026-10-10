@@ -6,9 +6,13 @@ import path from 'node:path';
 import { discoverCi } from './ci-discovery.mjs';
 import { runLogged } from './run-log.mjs';
 import { ACTIONLINT_VERSION } from './actionlint.mjs';
+import { parse as parseYaml, stringify as stringifyYaml } from './vendor/yaml/index.js';
 
 const versions = { actionlint: ACTIONLINT_VERSION, zizmor: '1.30.1' };
 const text = value => typeof value === 'string' && value.length > 0 && value.length <= 2048;
+const runnerLabel = value => typeof value === 'string' && value.length >= 1 && value.length <= 128
+  && /^[A-Za-z0-9_.-]+$/.test(value);
+const runnerLabelList = value => Array.isArray(value) && value.length <= 64 && value.every(runnerLabel);
 
 export function parseFindings(provider, stdout, exitCode, checkout, workflows) {
   const data = JSON.parse(stdout);
@@ -32,8 +36,9 @@ export function parseFindings(provider, stdout, exitCode, checkout, workflows) {
   });
 }
 
-export async function checkCi({ repo, head, provider = 'actionlint', binary } = {}, { executeTool = runLogged } = {}) {
+export async function checkCi({ repo, head, provider = 'actionlint', binary, runnerLabels = [] } = {}, { executeTool = runLogged } = {}) {
   if (!Object.hasOwn(versions, provider)) throw new Error('unsupported-ci-provider');
+  if (!Array.isArray(runnerLabels) || !runnerLabels.every(runnerLabel)) throw new Error('invalid-runner-label');
   const inventory = discoverCi({ repo, head });
   const report = { schemaVersion: 'ci-local-guard/ci-check/v1', command: 'ci check', identity: inventory.identity,
     scope: 'top-level-github-workflow-static-baseline', outcome: 'blocked', provider: { id: provider, expectedVersion: versions[provider] },
@@ -41,7 +46,8 @@ export async function checkCi({ repo, head, provider = 'actionlint', binary } = 
     workflows: inventory.workflows.map(({ path: file, blob, analysis }) => ({ path: file, blob, analysis })),
     coverage: { projectTests: 'not-run', workflowExecution: 'not-run', hosted: 'unverified',
       onlineAudits: 'not-run', shellcheck: 'not-run', pyflakes: 'not-run',
-      policy: 'tool-baseline-project-config-not-loaded', inlineSuppressions: provider === 'zizmor' ? 'disabled' : 'not-supported' },
+      policy: 'fixed-baseline-project-runner-labels-only', inlineSuppressions: provider === 'zizmor' ? 'disabled' : 'not-supported' },
+    baseline: { runnerLabels: [], sources: [] },
     evidence: [], nextActions: [],
   };
   report.coverage.localActionMetadata = 'not-copied';
@@ -104,9 +110,42 @@ export async function checkCi({ repo, head, provider = 'actionlint', binary } = 
       hashes.push([file.path, createHash('sha256').update(content).digest('hex')]);
     }
     const files = inventory.workflows.map(x => x.path);
-    // Fixed baseline policy avoids hidden user/project tool configuration.
+    // Baseline runner labels: the committed actionlint config's
+    // self-hosted-runner.labels is the only project key honored, read from
+    // the head commit, never the working tree; caller options add more.
+    // Every other config key stays at tool defaults (fixed baseline).
+    if (provider === 'actionlint') {
+      const addLabels = list => {
+        let added = false;
+        for (const label of list) if (!report.baseline.runnerLabels.includes(label)) { report.baseline.runnerLabels.push(label); added = true; }
+        return added;
+      };
+      for (const file of ['.github/actionlint.yaml', '.github/actionlint.yml', '.actionlint.yaml', '.actionlint.yml']) {
+        const timeout = Math.floor(deadline - performance.now());
+        if (timeout <= 0) throw new Error('static-check-deadline');
+        let present = false;
+        try {
+          execFileSync('git', ['-C', inventory.identity.repo, 'cat-file', '-e', `${inventory.identity.head}:${file}`],
+            { timeout, windowsHide: true, env, stdio: ['ignore', 'ignore', 'ignore'] });
+          present = true;
+        } catch { /* not committed at this head */ }
+        if (!present) continue;
+        let labels = null;
+        try {
+          const content = execFileSync('git', ['-C', inventory.identity.repo, 'cat-file', 'blob', `${inventory.identity.head}:${file}`],
+            { timeout, maxBuffer: 1024 * 1024, windowsHide: true, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
+          const declared = parseYaml(content, { uniqueKeys: true, maxAliasCount: 64 })?.['self-hosted-runner']?.labels;
+          labels = declared === undefined ? [] : runnerLabelList(declared) ? declared : null;
+        } catch { labels = null; }
+        if (labels === null) report.issues.push({ code: 'invalid-actionlint-runner-labels', path: file });
+        else if (addLabels(labels)) report.baseline.sources.push(`project:${file}`);
+        break;
+      }
+      if (runnerLabels.length && addLabels(runnerLabels)) report.baseline.sources.push('cli-option');
+    }
     const config = path.join(checkout, `.guard-actionlint-${process.pid}.yml`);
-    if (provider === 'actionlint') writeFileSync(config, '{}\n', { flag: 'wx', mode: 0o600 });
+    if (provider === 'actionlint') writeFileSync(config, report.baseline.runnerLabels.length
+      ? stringifyYaml({ 'self-hosted-runner': { labels: report.baseline.runnerLabels } }) : '{}\n', { flag: 'wx', mode: 0o600 });
     const args = provider === 'actionlint'
       ? ['-config-file', config, '-shellcheck=', '-pyflakes=', '-no-color', '-format', '{{json .}}', ...files]
       : ['--offline', '--no-config', '--no-ignores', '--strict-collection', '--format=json-v1', '--no-progress', ...files];
