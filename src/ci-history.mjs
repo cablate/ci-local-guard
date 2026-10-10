@@ -100,7 +100,7 @@ export function measure(entry) {
 export function hostedNames(workflow) {
   const names = new Map();
   for (const job of workflow.jobs || []) {
-    const legs = [...job.localReplay.replayable, ...job.localReplay.hostedOnly.map(item => item.matrix),
+    const legs = [...job.localReplay.replayable.map(item => item.matrix), ...job.localReplay.hostedOnly.map(item => item.matrix),
       ...job.localReplay.unknown.map(item => item.matrix).filter(Boolean)];
     const base = job.name ?? job.id;
     for (const leg of legs.length ? legs : [{}]) {

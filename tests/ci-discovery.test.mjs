@@ -106,7 +106,8 @@ test('parsed workflows tell an agent which commands CI runs and what can be repl
   const r = discoverCi({ repo: f.root });
   const wf = r.workflows.find(w => w.path.endsWith('ci.yml'));
   assert.equal(wf.analysis, 'parsed');
-  assert.deepEqual(wf.jobs[0].localReplay.replayable, [{ os: 'ubuntu-latest' }]);
+  assert.deepEqual(wf.jobs[0].localReplay.replayable, [{ matrix: { os: 'ubuntu-latest' }, labels: ['ubuntu-latest'],
+    image: 'catthehacker/ubuntu:act-latest', imageSource: 'guard-default' }]);
   assert.deepEqual(wf.jobs[0].localReplay.hostedOnly.map(l => l.labels), [['windows-latest']]);
   assert.deepEqual(r.ciCommands.find(c => c.command === 'npm run lint').scripts, ['lint']);
   const multi = r.ciCommands.find(c => c.lines === 2);
@@ -168,4 +169,17 @@ jobs:
     assert.equal(job.localReplay.replayable.length, 0);
     assert.equal(job.localReplay.unknown[0].reason, 'docker-daemon-unavailable-in-replay');
   }
+});
+
+test('caller platform mappings make third-party runner labels locally replayable', t => {
+  const ci = 'name: CI\non: [pull_request]\njobs:\n  build:\n    runs-on: blacksmith-2vcpu-ubuntu-2404\n    steps: [{run: npm test}]\n';
+  const f = fixture(t, { '.github/workflows/ci.yml': ci });
+  const unmapped = discoverCi({ repo: f.root });
+  assert.deepEqual(unmapped.workflows[0].jobs[0].localReplay.hostedOnly.map(l => l.labels), [['blacksmith-2vcpu-ubuntu-2404']]);
+  assert.equal(unmapped.workflows[0].jobs[0].localReplay.replayable.length, 0);
+  const mapped = discoverCi({ repo: f.root, platform: { 'blacksmith-2vcpu-ubuntu-2404': 'catthehacker/ubuntu:act-24.04' } });
+  assert.deepEqual(mapped.workflows[0].jobs[0].localReplay.replayable, [{ matrix: {}, labels: ['blacksmith-2vcpu-ubuntu-2404'],
+    image: 'catthehacker/ubuntu:act-24.04', imageSource: 'caller-mapped' }]);
+  assert.equal(mapped.workflows[0].jobs[0].localReplay.hostedOnly.length, 0);
+  assert.throws(() => discoverCi({ repo: f.root, platform: { 'bad label': 'image' } }), /invalid-platform-mapping/);
 });

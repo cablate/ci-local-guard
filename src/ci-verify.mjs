@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { checkCi } from './ci-check.mjs';
 import { discoverCi } from './ci-discovery.mjs';
-import { replayCi } from './ci-replay.mjs';
+import { DEFAULT_PLATFORMS, replayCi } from './ci-replay.mjs';
 import { cleanGitEnvironment } from './project.mjs';
 import { evaluateTrigger } from './workflow-triggers.mjs';
 
@@ -95,7 +95,7 @@ export function planTargets(workflows, triggers) {
       for (const leg of job.localReplay.hostedOnly) hostedOnly.push({ ...base, matrix: leg.matrix, reason: `runner ${leg.labels.join(',')} has no local Linux stand-in` });
       for (const item of job.localReplay.unknown) undetermined.push({ ...base, ...(item.matrix ? { matrix: item.matrix } : {}), reason: item.reason });
       if (needed.has(job.id)) continue;
-      for (const leg of job.localReplay.replayable) targets.push({ ...base, matrix: leg, ...(job.if ? { condition: job.if } : {}) });
+      for (const leg of job.localReplay.replayable) targets.push({ ...base, matrix: leg.matrix, ...(job.if ? { condition: job.if } : {}) });
     }
   }
   return { targets, hostedOnly, undetermined };
@@ -108,7 +108,7 @@ export async function verifyCi(opts, deps = {}) {
     staticCheck: null, replays: [], issues: [], nextActions: [],
     limitation: 'Covers only what runs locally: static workflow checks and Linux jobs replayed with act. Trigger selection follows documented branch/tag/path filters; job if-conditions are evaluated by act during replay, not here. Hosted-only items still need GitHub Actions.' };
   try {
-    const inventory = discover({ repo: opts.repo, head: opts.head || 'HEAD', tools: true });
+    const inventory = discover({ repo: opts.repo, head: opts.head || 'HEAD', tools: true, platform: opts.platform });
     const repo = inventory.identity.repo;
     const head = inventory.identity.head;
     const context = changeContext(repo, head, opts);

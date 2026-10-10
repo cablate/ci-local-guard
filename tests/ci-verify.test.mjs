@@ -118,3 +118,22 @@ test('blocked replays and unknown changes are incomplete, never clear', async t 
   assert.throws(() => verifyOptions(['--event', 'schedule']), /unsupported-event/);
   assert.throws(() => verifyOptions(['--base', '--upload-pack=x']), /invalid-verify-options/);
 });
+
+test('a --platform mapping turns third-party runner legs into replay targets, not hosted-only', async t => {
+  const f = fixture(t);
+  f.write('.github/workflows/bs.yml', 'on: pull_request\njobs:\n  bs:\n    runs-on: blacksmith-2vcpu-ubuntu-2404\n    steps: [{run: node --test}]\n');
+  f.git('add', '.'); f.git('commit', '-qm', 'bs');
+  const seen = [];
+  const spyDiscover = args => { seen.push(args); return { ...discoverCi(args), tools }; };
+  const base = { discover: spyDiscover, check: passCheck,
+    replay: async opts => ({ outcome: 'passed', jobs: [{ job: opts.job, result: 'success' }], failures: [], issues: [], nextActions: [] }) };
+  const opts = ['--repo', f.root, '--event', 'pull_request', '--static-only',
+    '--platform', 'blacksmith-2vcpu-ubuntu-2404=catthehacker/ubuntu:act-22.04'];
+  const mapped = await verifyCi(verifyOptions(opts), base);
+  assert.deepEqual(seen[0].platform, { 'blacksmith-2vcpu-ubuntu-2404': 'catthehacker/ubuntu:act-22.04' });
+  assert.ok(mapped.hostedOnly.every(x => x.workflow !== '.github/workflows/bs.yml'));
+  assert.ok(mapped.notVerified.some(x => x.workflow === '.github/workflows/bs.yml' && x.stage === 'replay' && x.reason === 'skipped-by-static-only'));
+  const unmapped = await verifyCi(verifyOptions(opts.slice(0, -2)), { ...base, discover: spyDiscover });
+  assert.ok(unmapped.hostedOnly.some(x => x.workflow === '.github/workflows/bs.yml' && /blacksmith-2vcpu-ubuntu-2404/.test(x.reason)));
+  assert.ok(!unmapped.notVerified.some(x => x.workflow === '.github/workflows/bs.yml'));
+});

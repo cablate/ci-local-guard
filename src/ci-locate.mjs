@@ -260,7 +260,7 @@ export async function locateCi(opts, deps = {}) {
         failure.located = true;
         const hostOs = { win32: 'windows', darwin: 'macos', linux: 'ubuntu' }[platform];
         const local = { headMatches: run.head_sha === inventory.identity.head,
-          replayable: Boolean(declaredJob?.localReplay.replayable.some(leg => JSON.stringify(leg) === JSON.stringify(mapped.matrix))),
+          replayable: Boolean(declaredJob?.localReplay.replayable.some(leg => JSON.stringify(leg.matrix) === JSON.stringify(mapped.matrix))),
           sameOsAsRunner: Boolean(hostOs && (job.labels || []).some(label => label.toLowerCase().startsWith(hostOs))) };
         failure.local = local;
       }

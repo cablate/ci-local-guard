@@ -18,7 +18,7 @@ const MAX_BYTES = 1024 * 1024;
 
 // This path only reads Git objects. Never inspect the dirty checkout, run a
 // project script, download a provider or expose command text from package.json.
-export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false } = {}) {
+export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false, platform = {} } = {}) {
   const deadline = performance.now() + 15000;
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
   const read = (args, maxBuffer = MAX_BYTES) => {
@@ -33,6 +33,13 @@ export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false 
   };
   if (typeof repo !== 'string' || !repo || typeof head !== 'string' || !head || head.length > 512
     || head.startsWith('-') || /[\x00-\x20\x7f]/.test(head)) throw new Error('invalid-repository-or-revision');
+  // Caller-declared label=image stand-ins, same format as `ci replay --platform`.
+  const callerPlatforms = {};
+  for (const [label, image] of Object.entries(platform)) {
+    if (Object.keys(callerPlatforms).length >= 64 || !/^[A-Za-z0-9_.-]{1,128}$/.test(label)
+      || typeof image !== 'string' || !/^\S{1,256}$/.test(image)) throw new Error('invalid-platform-mapping');
+    callerPlatforms[label] = image;
+  }
   repo = path.resolve(repo);
   const root = read(['rev-parse', '--show-toplevel']).trim();
   repo = root;
@@ -99,7 +106,7 @@ export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false 
       return Number.isSafeInteger(size) && size <= MAX_BYTES ? read(['cat-file', 'blob', `${sha}:${file}`]) : null;
     } catch { return null; }
   };
-  const analyzed = workflows.map(item => analyzeWorkflow(item, read, readPath));
+  const analyzed = workflows.map(item => analyzeWorkflow(item, read, readPath, callerPlatforms));
   const commands = ciCommands(analyzed);
   const toolStatus = tools ? probeTools() : null;
   const repository = githubRepository(read);
@@ -107,7 +114,7 @@ export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false 
   // deploy workflows can have side effects and are left to the caller.
   const replayable = analyzed.filter(item => item.triggers?.some(t => t.event === 'pull_request'))
     .flatMap(item => (item.jobs || []).filter(job => job.localReplay.replayable.length)
-      .map(job => ({ workflow: item.path, job: job.id, leg: job.localReplay.replayable[0] })));
+      .map(job => ({ workflow: item.path, job: job.id, leg: job.localReplay.replayable[0].matrix })));
   const hostedOnly = analyzed.flatMap(item => (item.jobs || []).filter(job => job.localReplay.hostedOnly.length)
     .map(job => ({ workflow: item.path, job: job.id, legs: job.localReplay.hostedOnly })));
   const nextActions = [];
@@ -150,7 +157,8 @@ export function discoverCi({ repo = process.cwd(), head = 'HEAD', tools = false 
   };
 }
 
-function analyzeWorkflow(item, read, readPath) {
+function analyzeWorkflow(item, read, readPath, callerPlatforms = {}) {
+  const platforms = { ...DEFAULT_PLATFORMS, ...callerPlatforms };
   const size = Number(read(['cat-file', '-s', item.blob], 128).trim());
   if (!Number.isSafeInteger(size) || size > MAX_BYTES) return { ...item, analysis: 'too-large' };
   const model = parseWorkflow(read(['cat-file', 'blob', item.blob]), item.path);
@@ -168,8 +176,13 @@ function analyzeWorkflow(item, read, readPath) {
       else for (const leg of legs) {
         const labels = runnerLabels(job, leg);
         if (!labels) localReplay.unknown.push({ matrix: leg, reason: 'runs-on-expression' });
-        else if (labels.some(label => DEFAULT_PLATFORMS[label])) localReplay.replayable.push(leg);
-        else localReplay.hostedOnly.push({ matrix: leg, labels });
+        else {
+          // Same merged map as ci replay: a caller-declared image is a stand-in.
+          const label = labels.find(item => platforms[item]);
+          if (label) localReplay.replayable.push({ matrix: leg, labels, image: platforms[label],
+            imageSource: callerPlatforms[label] ? 'caller-mapped' : 'guard-default' });
+          else localReplay.hostedOnly.push({ matrix: leg, labels });
+        }
       }
       return { id: job.id, name: job.name, line: job.line, runsOn: job.runsOn, needs: job.needs, if: job.if, uses: job.uses,
         ...(job.environment ? { environment: job.environment } : {}), ...(job.usesSecrets ? { usesSecrets: true } : {}),

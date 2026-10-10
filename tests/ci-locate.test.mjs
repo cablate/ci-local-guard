@@ -66,7 +66,7 @@ test('workflow steps are matched by name, run line or action, never by a guess',
 const sha = 'a'.repeat(40);
 const workflow = { path: '.github/workflows/ci.yml', analysis: 'parsed', jobs: [
   { id: 'test', name: null, steps: [{ name: 'Unit tests', run: 'npm test', line: 20 }],
-    localReplay: { replayable: [{ os: 'ubuntu-latest' }], hostedOnly: [{ matrix: { os: 'windows-latest' }, labels: ['windows-latest'] }], unknown: [] } }] };
+    localReplay: { replayable: [{ matrix: { os: 'ubuntu-latest' }, labels: ['ubuntu-latest'], image: 'catthehacker/ubuntu:act-latest', imageSource: 'guard-default' }], hostedOnly: [{ matrix: { os: 'windows-latest' }, labels: ['windows-latest'] }], unknown: [] } }] };
 const run = { id: 7, run_attempt: 1, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'failure',
   path: '.github/workflows/ci.yml', repository: { full_name: 'o/r' }, workflow_id: 3 };
 const job = (id, name, conclusion, steps, status = 'completed') => ({ id, name, status, conclusion, labels: [name.includes('windows') ? 'windows-latest' : 'ubuntu-latest'], steps });
