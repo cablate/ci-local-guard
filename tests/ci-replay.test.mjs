@@ -243,3 +243,15 @@ test('a job that fails before any workflow step is an environment problem, not a
   assert.equal(report.nextActions.at(-1).kind, 'read-runner-output');
   assert.equal(report.resources.cleanup.outcome, 'cleaned', 'the run-owned network is removed too');
 });
+
+
+test('Docker daemon requirement blocks before any tool probe or execution', async t => {
+  const f = fixture(t, WORKFLOW.replace('node --test tests/*.test.mjs', 'docker run scanner'));
+  const never = () => { throw new Error('must not invoke tools'); };
+  const report = await replayCi(options(f), { probeTool: never, executeTool: never });
+  assert.equal(report.outcome, 'blocked');
+  assert.equal(report.execution.status, 'not-run');
+  assert.equal(report.issues[0].code, 'docker-daemon-unavailable-in-replay');
+  assert.equal(report.resources, null);
+  assert.equal(report.nextActions[0].kind, 'verify-on-hosted-ci');
+});

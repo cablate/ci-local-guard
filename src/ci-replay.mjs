@@ -1,3 +1,4 @@
+import { dockerDaemonRequirement } from './replay-prerequisites.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, mkdirSync, mkdtempSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -165,6 +166,8 @@ export async function replayCi(options, deps = {}) {
     let closure;
     try { closure = jobClosure(workflow, opts.job); }
     catch (error) { fail(error.message, { jobs: workflow.jobs.map(j => j.id) }); }
+    const dockerDependency = dockerDaemonRequirement(closure);
+    if (dockerDependency) fail(dockerDependency.reason, { job: dockerDependency.job, line: dockerDependency.line });
     const reusable = closure.find(job => job.uses);
     if (reusable) fail('reusable-workflow-job-not-supported', { job: reusable.id });
 
@@ -373,7 +376,8 @@ function blockedActions(report, code, detail, opts, rerun) {
   else if (code === 'image-not-present') {
     add('allow-image-pull', { image: detail.image, sideEffect: 'downloads the image from its registry', ...rerun({ pull: true }) });
     add('map-local-image', { label: detail.label, example: `--platform ${detail.label}=<local-linux-image-with-node-and-git>` });
-  } else if (code === 'no-replayable-leg') add('verify-on-hosted-ci', { legs: report.coverage.notReplayed,
+  } else if (code === 'docker-daemon-unavailable-in-replay') add('verify-on-hosted-ci', { reason: 'This job or a dependency uses Docker inside the runner; isolated replay does not expose a Docker daemon. Keep the hosted gate; do not skip it or expose the host socket.' });
+  else if (code === 'no-replayable-leg') add('verify-on-hosted-ci', { legs: report.coverage.notReplayed,
     reason: 'no selected leg maps to a local Linux image; map one with --platform <label>=<image> only if a Linux image is an acceptable stand-in' });
   else if (code === 'docker-resource-collision') add('inspect-colliding-resources', { resources: detail.collisions,
     reason: 'resources with this run\'s act names already exist (another act run or leftovers); Guard will not delete resources it did not create' });

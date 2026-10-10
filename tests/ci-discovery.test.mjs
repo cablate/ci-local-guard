@@ -147,3 +147,25 @@ test('local reusable workflows and composite actions are read from the same comm
   assert.equal(build.where[0].viaAction, '.github/actions/setup');
   assert.ok(!JSON.stringify(r).includes('PRIVATE_DIRTY'), 'committed version only');
 });
+
+
+test('Docker daemon jobs and dependent jobs are not advertised for isolated replay', t => {
+  const f = fixture(t, { '.github/workflows/ci.yml': `name: CI
+on: [pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - run: docker run scanner
+  test:
+    needs: scan
+    runs-on: ubuntu-latest
+    steps:
+      - run: node --test
+` });
+  const report = discoverCi({ repo: f.root });
+  for (const job of report.workflows[0].jobs) {
+    assert.equal(job.localReplay.replayable.length, 0);
+    assert.equal(job.localReplay.unknown[0].reason, 'docker-daemon-unavailable-in-replay');
+  }
+});

@@ -483,3 +483,5 @@ checkoutObservation 在執行前後採樣 HEAD、tree 和已追蹤檔案的修�
 目前已測 Windows 和 Ubuntu；macOS、arm64、Claude Desktop、WSL 尚未測試。
 
 
+
+含明確 Docker daemon 命令或 Docker 建置 action 的 job（含相依 job）會在執行前回報 `docker-daemon-unavailable-in-replay`。探索結果將其標為未驗證，不列為本機可重播；這些檢查仍留在 hosted CI。辨識採保守方式，不解析包裝腳本或求值條件；沒有偵測到不等於證明不需要 Docker daemon。

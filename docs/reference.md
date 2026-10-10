@@ -481,3 +481,5 @@ Guard terminates the process tree started by this invocation, not every process 
 checkoutObservation samples HEAD, tree and tracked changes before and after execution; a mismatch rejects success. It does not see changes made and then reverted between samples, untracked/ignored files or mutable dependencies. Shared node_modules and sampled Git state are useful checks, not a fully immutable environment or proof of what ran on a hosted runner.
 
 Windows and Ubuntu are tested. macOS, arm64, Claude Desktop and WSL remain untested.
+
+Jobs with explicit Docker daemon commands or Docker build actions (including needed jobs) are reported as `docker-daemon-unavailable-in-replay` before execution. Discovery marks them unverified, not locally replayable. Keep those checks on hosted CI. Detection is conservative and does not inspect wrapper scripts or evaluate conditions; absence of a finding is not proof that a job needs no Docker daemon.

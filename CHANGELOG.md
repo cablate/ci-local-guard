@@ -5,6 +5,9 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+- Detect explicit Docker daemon commands and Docker build actions before isolated replay, including job dependencies. Report the missing capability instead of a misleading workflow failure.
+
 ## [0.2.0] - 2026-10-09
 
 This update lets your AI catch CI failures before pushing. New ci commands read your GitHub workflows directly, replay the Linux jobs locally with act, point to the failing step and test when a GitHub run fails, and show whether a workflow change makes CI check less. No adapter needed.

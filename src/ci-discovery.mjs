@@ -1,10 +1,11 @@
+import { dockerDaemonRequirement } from './replay-prerequisites.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ACTIONLINT_VERSION } from './actionlint.mjs';
 import { ACT_VERSION, DEFAULT_PLATFORMS, dockerEndpoint } from './ci-replay.mjs';
-import { parseWorkflow, runnerLabels } from './workflow-model.mjs';
+import { jobClosure, parseWorkflow, runnerLabels } from './workflow-model.mjs';
 import { parse as parseYaml } from './vendor/yaml/index.js';
 
 const markers = new Map([
@@ -158,8 +159,11 @@ function analyzeWorkflow(item, read, readPath) {
     jobs: model.jobs.map(job => {
       const legs = job.matrix.kind === 'dynamic' ? null : job.matrix.legs;
       const localReplay = { replayable: [], hostedOnly: [], unknown: [] };
+      let dockerDependency = null;
+      try { dockerDependency = dockerDaemonRequirement(jobClosure(model, job.id)); } catch { /* Existing structural diagnostics own invalid needs. */ }
       const calls = job.uses ? reusableWorkflow(job.uses, readPath) : null;
       if (job.uses) localReplay.unknown.push({ reason: 'reusable-workflow-job', ...(calls?.status === 'resolved' ? { replayInstead: calls.path } : {}) });
+      else if (dockerDependency) localReplay.unknown.push(dockerDependency);
       else if (!legs) localReplay.unknown.push({ reason: 'dynamic-matrix' });
       else for (const leg of legs) {
         const labels = runnerLabels(job, leg);

@@ -5,6 +5,9 @@
 
 ## [未發布]
 
+### 修正
+- 隔離重播前辨識明確的 Docker daemon 命令與 Docker 建置 action，包含相依 job；提早回報缺少能力，避免誤判為 workflow 本身失敗。
+
 ## [0.2.0] - 2026-10-09
 
 這次更新讓 AI 在推送前就能抓出 CI 失敗。新的 ci 命令直接讀取 GitHub workflows，用 act 在本機重播 Linux jobs；GitHub run 失敗時指出失敗的 step 與測試；修改 workflow 時告訴你 CI 是否檢查得比較少。不需要 adapter。
