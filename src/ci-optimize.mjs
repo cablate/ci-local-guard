@@ -76,12 +76,24 @@ function repeatsPerPush(triggers = []) {
   });
 }
 
-function staticFindings(workflow, sup, timing) {
+function staticFindings(workflow, sup, timing, supplements) {
   const findings = [];
-  // 1. No timeout-minutes at the job level or the workflow level.
+  // 1. No timeout-minutes at the job level or the workflow level. A reusable
+  // call job cannot set timeout-minutes itself; it is bounded when the
+  // workflow it calls carries a workflow-level timeout.
   for (const job of workflow.jobs || []) {
     const s = sup.jobs.get(job.id);
     if (sup.workflowTimeout || s?.timeout) continue;
+    if (job.uses) {
+      // A call job cannot set timeout-minutes; it is bounded when every job
+      // of the called (local) workflow carries its own timeout.
+      const called = supplements.get(job.uses.replace(/^\.\//, ''));
+      if (called && called.jobs.size && [...called.jobs.values()].every(entry => entry.timeout)) continue;
+      findings.push({ code: 'missing-timeout-minutes', workflow: workflow.path, job: job.id, line: job.line, impact: 'risk',
+        evidence: { kind: 'static' },
+        suggestion: `Job "${job.id}" calls a reusable workflow and cannot set timeout-minutes itself; give every job of ${job.uses.replace(/^\.\//, '')} a timeout-minutes to bound it.` });
+      continue;
+    }
     findings.push({ code: 'missing-timeout-minutes', workflow: workflow.path, job: job.id, line: job.line, impact: 'risk',
       evidence: { kind: 'static' },
       suggestion: `Add timeout-minutes (for example 15) to job "${job.id}" so a stuck run cannot burn up to GitHub's 360-minute default; this bounds the worst case, it is not waste that already happened.` });
@@ -252,7 +264,7 @@ export function optimizeCi(opts = {}, deps = {}) {
       const sup = supplements.get(workflow.path);
       if (!sup) continue;
       const index = histories.findIndex(entry => entry.workflow.path === workflow.path);
-      findings.push(...staticFindings(workflow, sup, index >= 0 ? analyzed[index].stats.stepTiming : null));
+      findings.push(...staticFindings(workflow, sup, index >= 0 ? analyzed[index].stats.stepTiming : null, supplements));
     }
     for (const item of analyzed) findings.push(...item.findings);
     report.identity = { repo: inventory.identity.repo, head: inventory.identity.head, repository, mode: 'committed',

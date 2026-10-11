@@ -10,7 +10,6 @@ concurrency:
 jobs:
   verify:
     uses: ./.github/workflows/ci.yml
-    timeout-minutes: 10
   github-release:
     needs: verify
     runs-on: ubuntu-latest

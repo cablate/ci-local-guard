@@ -311,3 +311,39 @@ test('invalid options fail closed with specific codes', () => {
   assert.equal(blocked.outcome, 'blocked');
   assert.deepEqual(blocked.issues, [{ code: 'git-read-unavailable-or-limit' }]);
 });
+
+test('a reusable call job cannot set timeout-minutes; bounded by the called workflow', () => {
+  const releaseYaml = `name: Release
+on:
+  push:
+    tags: [v*]
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+`;
+  const releaseWf = wf('.github/workflows/release.yml', 'r1', [{ event: 'push', filters: { tags: ['v*'] } }],
+    [job('verify', 5, [], { uses: './.github/workflows/ci.yml' })]);
+  const boundedCi = `name: Tests
+on:
+  push:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: node --test
+`;
+  const ciWf = wf('.github/workflows/ci.yml', 'c1', [{ event: 'push', filters: { branches: ['**'] } }],
+    [job('test', 8, [{ line: 10, run: 'node --test' }])]);
+  const sources = { r1: releaseYaml, c1: boundedCi };
+  const bounded = optimizeCi({}, { discover: discover([releaseWf, ciWf]), read: (_repo, blob) => sources[blob] });
+  assert.ok(!bounded.findings.some(f => f.code === 'missing-timeout-minutes'), 'the called workflow bounds the call job');
+  const unboundedSources = { r1: releaseYaml, c1: boundedCi.replace('    timeout-minutes: 10\n', '') };
+  const unbounded = optimizeCi({}, { discover: discover([releaseWf, ciWf]), read: (_repo, blob) => unboundedSources[blob] });
+  const finding = unbounded.findings.find(f => f.code === 'missing-timeout-minutes' && f.job === 'verify');
+  assert.ok(finding, 'an unbounded call job is still reported');
+  assert.match(finding.suggestion, /cannot set timeout-minutes itself/);
+  assert.match(finding.suggestion, /\.github\/workflows\/ci\.yml/);
+});
