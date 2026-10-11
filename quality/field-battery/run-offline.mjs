@@ -416,7 +416,7 @@ for (const mode of receiptRejections) S.push({
 });
 S.push({
   name: 'adopt-receipt-rejection-reasons-distinguishable',
-  known: '#TBD-receipt-reason',
+  known: '#10',
   run() {
     const reasons = {};
     for (const mode of ['bad-identity', 'bad-event', 'no-schema', 'log-escape', 'dup-id', 'outcome-local-complete']) {
@@ -470,7 +470,7 @@ S.push({
   // reference.md "Read a report" lists unconfigured / unavailable as a result; preflight reports outcome incomplete
   // there, the same word a passing run uses (exit 0), so outcome alone cannot tell the two apart.
   name: 'adopt-preflight-unconfigured-outcome-label',
-  known: '#TBD-outcome-label',
+  known: '#10',
   run() { const d = makeRepo('adopt-unconfigured', { 'src/a.txt': 'one\n' }, { extraCommits: [{ files: { 'src/a.txt': 'two\n' } }] }); return adoptPreflight(d); },
   expect: r => ['unconfigured', 'unavailable'].includes(r.json?.outcome) ? [] : [`outcome=${r.json?.outcome} for a run that executed nothing (exit ${r.code}); a passing run (exit 0) also reports incomplete`],
 });
@@ -499,14 +499,14 @@ for (const [name, bad] of Object.entries(badDescriptors)) S.push({
 });
 S.push({
   name: 'adopt-descriptor-invalid-cause-visible',
-  known: '#TBD-descriptor-reason',
+  known: '#10',
   run() { return adoptPreflight(adoptProject('adopt-bad-cause', { desc: adoptDescriptor({ entrypoint: '../x.mjs' }) })); },
   expect: r => (causes(r).length || (r.json?.nextActions || []).some(a => a.reason !== 'input-or-project-check-failed')) ? []
     : [`--summary JSON for a rejected descriptor has causes=[] and only reason ${r.json?.nextActions?.[0]?.reason}; the real error is on stderr only (${r.stderr.trim()})`],
 });
 S.push({
   name: 'adopt-descriptor-entrypoint-file-missing',
-  known: '#TBD-missing-entrypoint-message',
+  known: '#10',
   run() { const d = adoptProject('adopt-missing-entry', { desc: adoptDescriptor({ entrypoint: 'quality/missing.mjs' }) }); return Object.assign(adoptPreflight(d), { doctor: run(['doctor', '--check', '--repo', d, '--summary']) }); },
   expect: r => [r.code !== 1 ? `exit=${r.code}, expected 1` : null,
     r.doctor.json?.outcome !== 'blocked' ? `doctor --check says ${r.doctor.json?.outcome}` : null,
@@ -636,7 +636,7 @@ pushCase('force-push-divergent-remote', ({ head, dir }) => {
   return pushLine('refs/heads/main', head, 'refs/heads/main', side);
 }, { expect: r => [r.code !== 0 || r.json?.outcome !== 'local-policy-satisfied' ? `exit=${r.code} outcome=${r.json?.outcome} failure=${r.failureCode}` : null].filter(Boolean) });
 pushCase('remote-object-not-fetched', ({ head }) => pushLine('refs/heads/main', head, 'refs/heads/main', 'a'.repeat(40)), {
-  known: '#TBD-unfetched-remote-sha',
+  known: '#10',
   // The old remote sha is unknown locally (remote ahead of the last fetch, or a force-with-lease push).
   expect: r => r.code === 1 && r.failureCode !== 'execution-failed' ? [] : [`exit=${r.code}; failure.code=${r.failureCode} is the generic execution-failed with a raw git error (${(r.stderr || '').trim().slice(0, 80)}), no hint to fetch`] });
 pushCase('check-fails', mainLine, { env: { ADAPTER_MODE: 'fail' }, expect: r => [r.code !== 1 || r.json?.outcome !== 'blocked' ? `exit=${r.code} outcome=${r.json?.outcome}` : null,
@@ -729,7 +729,7 @@ S.push({
 });
 S.push({
   name: 'adopt-hook-install-silently-bypasses-dotgit-hooks',
-  known: '#TBD-hook-bypass',
+  known: '#10',
   // hooksPath redirects every hook (pre-push, commit-msg, post-checkout, git-lfs...) away from .git/hooks.
   run() {
     const d = adoptProject('adopt-hk-dotgit');
@@ -746,7 +746,7 @@ S.push({
 });
 S.push({
   name: 'adopt-hook-install-silently-overrides-global-hookspath',
-  known: '#TBD-hook-global-override',
+  known: '#10',
   run() {
     const d = adoptProject('adopt-hk-global');
     const globalDir = path.join(ROOT, 'tmp', 'adopt-global-hooks');
@@ -833,7 +833,7 @@ S.push({
 });
 S.push({
   name: 'adopt-hook-node-missing-from-hook-path',
-  known: '#TBD-hook-node-path',
+  known: '#10',
   // Git GUIs and nvm/scoop setups can run hooks without node on PATH; the hook then blocks every commit and push.
   run() {
     const d = adoptProject('adopt-hk-nonode');
