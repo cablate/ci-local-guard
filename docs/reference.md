@@ -180,6 +180,8 @@ Reports use ci-local-guard/ci-inventory/v1, ci-local-guard/ci-check/v1, ci-local
 
 ## Connect a project
 
+This path — adapters, descriptors, receipts, plans, push policies and hooks (preflight, plan, install-hook, pre-push, pre-commit) — is **experimental**: it predates the ci commands and needs project setup. The ci commands above cover most needs without it.
+
 Guard uses the tests your project already has. The small amount of setup connects those tests to Guard:
 
 | Term | What it means |
@@ -354,7 +356,7 @@ pre-push compares with the remote old SHA supplied by Git. Missing old objects, 
 
 ### Install or remove hooks
 
-Run these separately, with the project's approval:
+Installing refuses when it would stop existing hooks from running (.git/hooks files, or an inherited global core.hooksPath); `--force` overrides, and Guard never chains to other hooks. Run these separately, with the project's approval:
 
 ```sh
 ci-local-guard install-hook --repo <project>

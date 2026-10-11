@@ -5,6 +5,16 @@
 
 ## [未發布]
 
+### 變更
+- Guard 依實測回報重新定位：失敗診斷（`ci locate`）、workflow 審查（`ci diff`、`ci check`）與時間分析成為 README 主打；本機重播（`ci verify`、`ci replay`）為選用，專案 adapter／push hook 路線（preflight、plan、descriptor、receipt、hooks）標為實驗功能。
+
+### 修正
+- `ci history` 與 `ci optimize` 不再把短彙總關卡 job 當關鍵路徑：最後完成的 job 若短於它所 needs 的某個 job 的一半，等待時間歸給那個 job（依宣告的 `needs`，workflow 對應不到時依時間推斷），關卡 job 另列。只因被 needs 的 job 失敗而失敗的關卡 job，在 `failures.byJob` 另計（`downstreamOfFailedNeeds`），不算第二個失敗。
+- `ci history` 只用 Hosted 紀錄就分出 flaky：同一 commit 失敗後又成功的 attempt 歸入 `failures.flaky` 並單獨計成本，在 `failures.attempts` 標記，`--reproduce` 跳過這些 commit 不重播。`--reproduce` 另依 Hosted job 時長給預估，並在 stderr 每 commit 印一行進度（stdout 仍只有 JSON）。
+- 以「Unhandled Errors」結尾的 Vitest run（沒有 FAIL 行）現在會解析進 `failedTests`：錯誤行（常是 `##[error]` 標記）與其下的 `originated in "<file>"` 行配對，`ci locate` 與 `ci replay` 都適用。
+- `--test-timing` 只取該 job 自身結論為 success 的 attempt；skipped 的 job 不再顯示為 `log-unavailable`。
+- `install-hook` 在會讓既有 hooks 停止運作時拒絕安裝（`.git/hooks` 內的可執行檔，或繼承的全域／系統 `core.hooksPath`），並指名是哪些；`--force` 可覆蓋，拒絕條件已寫進文件。
+
 ## [0.2.3] - 2026-10-11
 
 第三份實測回報（#7）針對 0.2.2 新增的兩個功能的修正：`ci optimize` 的 findings 更準確，host-executable 與重現命令會說明每個 step 該用的 shell 與目錄。

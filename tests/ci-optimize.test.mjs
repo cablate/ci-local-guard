@@ -473,3 +473,33 @@ test('--limit bounds the runs read per workflow and progress goes out once per w
   assert.equal(report.coverage.sampleLimit, 3);
   for (const bad of ['0', '51', 'x']) assert.equal(optimizeCi({ limit: bad }, { discover: discover([calledWf]) }).issues[0].code, 'invalid-limit');
 });
+
+test('a short gate job does not hide the dominant step of the job it waits for', () => {
+  const gateYaml = `name: CI
+on:
+  push:
+    branches: ['**']
+concurrency:
+  group: ci
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - run: npm run test:browser
+  verify:
+    needs: [browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+`;
+  const gateWf = wf('.github/workflows/ci.yml', 'g1', [{ event: 'push', filters: { branches: ['**'] } }],
+    [job('browser', 9, [{ line: 13, run: 'npm run test:browser' }]), job('verify', 14, [{ line: 19, run: 'echo ok' }], { needs: ['browser'] })]);
+  const run = id => entry(id, [hjob('browser', 0, 578, [['Run actions/checkout@v5', 0, 5], ['Run npm run test:browser', 10, 570]]),
+    hjob('verify', 580, 589, [['Run echo ok', 581, 582]])]);
+  const report = optimizeCi({}, { discover: discover([gateWf], 'o/r'), read: () => gateYaml, collect: collect([run(1), run(2)]), progress: () => {} });
+  const dominant = report.findings.find(f => f.code === 'dominant-step-on-critical-path');
+  assert.deepEqual([dominant.job, dominant.step, dominant.line], ['browser', 'Run npm run test:browser', 9]);
+});

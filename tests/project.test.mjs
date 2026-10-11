@@ -224,7 +224,7 @@ test('candidate README preserves adoption boundaries without internal evidence i
   assert.match(readme, /distributed through GitHub, not the npm registry/);
   assert.match(readme, /scripts with your local permissions/);
   const intro = readme.slice(0, readme.indexOf('## Let your AI'));
-  assert.match(intro, /existing checks/);
+  assert.match(intro, /ci locate/, 'the intro leads with failure diagnosis');
   assert.match(intro, /GitHub Actions still covers/);
   assert.equal((readme.match(/<details>/g) || []).length, (readme.match(/<\/details>/g) || []).length);
   const principles = readme.slice(readme.indexOf('<summary>PRINCIPLE'), readme.indexOf('</details>'));

@@ -60,3 +60,22 @@ test('formatFailedTest renders file:line with the title, or the title alone, cut
   assert.ok(long.startsWith('a.spec.ts:12 › tttt'));
   assert.equal(formatFailedTest({ name: 'plain', location: undefined }).length, 5);
 });
+
+test('a Vitest unhandled error with no FAIL line names its test file and error (issue #10 item 3)', () => {
+  const log = [
+    '2026-10-11T08:00:00.0000000Z  Test Files  41 passed (41)',
+    '2026-10-11T08:00:00.0000000Z ⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯',
+    '2026-10-11T08:00:00.0000000Z Vitest caught 1 unhandled error during the test run.',
+    '2026-10-11T08:00:00.0000000Z ⎯⎯⎯⎯⎯⎯ Unhandled Rejection ⎯⎯⎯⎯⎯⎯',
+    '##[error]ReferenceError: getComputedStyle is not defined',
+    '2026-10-11T08:00:00.0000000Z  ❯ refresh src/spa/editor-canvas.mjs:88:17',
+    '2026-10-11T08:00:00.0000000Z This error originated in "tests/unit/spa-editor-canvas-property.test.mjs" test file. It doesn\'t mean the error was thrown inside the file itself.',
+  ].join('\n');
+  const [entry] = extractFailedTests(log);
+  assert.deepEqual(entry, { name: 'ReferenceError: getComputedStyle is not defined',
+    location: { file: 'tests/unit/spa-editor-canvas-property.test.mjs', line: null, column: null },
+    source: 'vitest-unhandled', message: ['ReferenceError: getComputedStyle is not defined'] });
+  assert.equal(formatFailedTest(entry), 'tests/unit/spa-editor-canvas-property.test.mjs › ReferenceError: getComputedStyle is not defined');
+  const bare = extractFailedTests('This error originated in "tests/a.test.mjs" test file.');
+  assert.deepEqual([bare[0].name, bare[0].location.file], ['Unhandled error', 'tests/a.test.mjs'], 'no error line nearby still names the file');
+});

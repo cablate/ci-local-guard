@@ -121,3 +121,89 @@ test('skipped jobs stay out of per-job timing statistics', async () => {
   const a = report.baseline.jobs.find(item => item.name === 'a');
   assert.deepEqual([a.runs, a.medianSeconds], [1, 30], 'the attempt where the job was skipped does not dilute its median');
 });
+
+// Gate fixture (issue #10 item 1): `verify` needs every other job, runs 9 s,
+// and finishes last; the wait is set by the 578 s browser suite it waits for.
+const gateWorkflow = { path: '.github/workflows/ci.yml', analysis: 'parsed', jobs: [
+  { id: 'unit', name: null, needs: [], localReplay: { replayable: [{ matrix: {} }], hostedOnly: [], unknown: [] } },
+  { id: 'browser', name: null, needs: [], localReplay: { replayable: [{ matrix: {} }], hostedOnly: [], unknown: [] } },
+  { id: 'verify', name: null, needs: ['unit', 'browser'], localReplay: { replayable: [{ matrix: {} }], hostedOnly: [], unknown: [] } }] };
+const gateRun = (id, conclusion, browser = 'success') => entry(id, 1, conclusion, [job('unit', 'success', 0, 120),
+  job('browser', browser, 0, 578, ['ubuntu-latest'], browser === 'failure' ? 'npm run test:browser' : undefined),
+  job('verify', conclusion, 580, 589)]);
+
+test('a short gate job that only waits hands the critical path to the job it waited on', async () => {
+  const discover = () => ({ identity: { repo: '.', repository: 'o/r' }, workflows: [gateWorkflow] });
+  const report = await historyCi(historyOptions(['--workflow', 'ci.yml', '--input', 'x.json']), { discover,
+    readExport: () => ({ schemaVersion: 'ci-local-guard/github-export/v1', runs: [gateRun(1, 'success'), gateRun(2, 'success'), gateRun(3, 'failure', 'failure')] }) });
+  const critical = report.baseline.speedLeads.find(lead => lead.kind === 'critical-job');
+  assert.deepEqual([critical.job, critical.finishedLastIn, critical.medianSeconds], ['browser', '2/2', 578]);
+  assert.deepEqual(critical.gateJobs, [{ name: 'verify', medianSeconds: 9, gateIn: '2/2' }]);
+  assert.match(critical.meaning, /verify finishes after it but only waits for it/);
+  assert.deepEqual(report.failures.byJob, [{ name: 'browser', count: 1 }], 'the gate echo is not a second failure');
+  assert.deepEqual(report.failures.downstreamOfFailedNeeds, [{ name: 'verify', count: 1 }]);
+});
+
+test('without a mapped workflow the gate is found from timing: it started after the job it waited on finished', async () => {
+  const discover = () => ({ identity: { repo: '.', repository: 'o/r' }, workflows: [] });
+  const report = await historyCi(historyOptions(['--workflow', 'ci.yml', '--input', 'x.json']), { discover,
+    readExport: () => ({ schemaVersion: 'ci-local-guard/github-export/v1', runs: [gateRun(1, 'success')] }) });
+  assert.equal(report.baseline.speedLeads.find(lead => lead.kind === 'critical-job').job, 'browser');
+  const longLast = await historyCi(historyOptions(['--workflow', 'ci.yml', '--input', 'x.json']), { discover,
+    readExport: () => ({ schemaVersion: 'ci-local-guard/github-export/v1',
+      runs: [entry(1, 1, 'success', [job('build', 'success', 0, 100), job('deploy', 'success', 101, 400)])] }) });
+  assert.equal(longLast.baseline.speedLeads.find(lead => lead.kind === 'critical-job').job, 'deploy', 'a long last job is real work, not a gate');
+});
+
+// Issue #10 item 2: 7 failed attempts, 6 of them passed later on the same commit.
+const shaOf = n => n.toString(16).padStart(40, '0');
+const flakyExport = () => {
+  const runs = [];
+  for (let i = 1; i <= 6; i++) {
+    runs.push(entry(i, 1, 'failure', [job('e2e', 'failure', 0, 300, ['ubuntu-latest'], 'npm run e2e')], { head_sha: shaOf(i), run_started_at: at(i * 1000) }));
+    runs.push(entry(i, 2, 'success', [job('e2e', 'success', 0, 280)], { head_sha: shaOf(i), run_started_at: at(i * 1000 + 500) }));
+  }
+  runs.push(entry(7, 1, 'failure', [job('e2e', 'failure', 0, 290, ['ubuntu-latest'], 'npm run e2e')], { head_sha: shaOf(7), run_started_at: at(9000) }));
+  // A success that happened BEFORE a failure on the same commit does not make it flaky.
+  runs.push(entry(8, 1, 'success', [job('e2e', 'success', 0, 280)], { head_sha: shaOf(8), run_started_at: at(9500) }));
+  runs.push(entry(9, 1, 'failure', [job('e2e', 'failure', 0, 290, ['ubuntu-latest'], 'npm run e2e')], { head_sha: shaOf(8), run_started_at: at(9800) }));
+  return { schemaVersion: 'ci-local-guard/github-export/v1', runs };
+};
+
+test('a failure that passes later on the same commit is flaky, from hosted data alone', async () => {
+  const discover = () => ({ identity: { repo: '.', repository: 'o/r' }, workflows: [] });
+  const report = await historyCi(historyOptions(['--workflow', 'ci.yml', '--input', 'x.json']), { discover, readExport: flakyExport, progress: () => {} });
+  assert.equal(report.failures.count, 8);
+  assert.deepEqual([report.failures.flaky.attempts, report.failures.persistent.attempts], [6, 2]);
+  assert.equal(report.failures.flaky.billableMinutes, 30, '6 attempts x 5 started minutes');
+  assert.deepEqual(report.failures.attempts.filter(item => item.flaky).map(item => item.runId), [1, 2, 3, 4, 5, 6]);
+  assert.match(report.verdict, /6 flaky: passed later on the same commit/);
+  const flaky = report.nextActions.find(action => action.kind === 'investigate-flaky-failures');
+  assert.deepEqual([flaky.count, flaky.jobs], [6, ['e2e']]);
+  assert.ok(report.nextActions.some(action => action.kind === 'classify-failures-locally'), 'two persistent failures still deserve a local check');
+});
+
+test('--reproduce skips flaky commits, estimates from hosted job time and reports progress per commit', async () => {
+  const discover = () => ({ identity: { repo: '.', repository: 'o/r' }, workflows: [{ path: '.github/workflows/ci.yml', analysis: 'parsed', jobs: [] }] });
+  const replayed = [];
+  const lines = [];
+  const verify = async opts => { replayed.push(opts.head); return { outcome: 'clear-locally', verdict: 'ok', expectedFailures: [], passedLocally: [], hostedOnly: [], notVerified: [] }; };
+  const report = await historyCi(historyOptions(['--workflow', 'ci.yml', '--input', 'x.json', '--reproduce']),
+    { discover, readExport: flakyExport, verify, progress: text => lines.push(text) });
+  assert.deepEqual(replayed, [shaOf(7), shaOf(8)], 'only the two commits that never passed afterwards are replayed');
+  assert.equal(report.reproduction.items.filter(item => item.runClass === 'flaky').length, 6);
+  assert.deepEqual([report.reproduction.estimate.commits, report.reproduction.estimate.hostedJobSeconds], [2, 580]);
+  assert.equal(report.avoidable.flaky.attempts, 6);
+  assert.match(lines[0], /2 commit\(s\) to replay, 6 flaky attempt\(s\) skipped/);
+  assert.match(lines[1], /commit 1\/2 0{12}/);
+  assert.equal(lines.length, 3);
+});
+
+test('test timing samples only jobs whose own conclusion is success', () => {
+  const attempt = (id, conclusion) => measure(entry(id, 1, 'success', [{ ...job('e2e', conclusion, 0, conclusion === 'skipped' ? 0 : 50), id: id * 10, steps: [] }]));
+  const fetched = [];
+  const result = testTiming([attempt(1, 'skipped'), attempt(2, 'success')], { job: 'e2e', samples: 2, repository: 'o/r' },
+    (repo, id) => { fetched.push(id); return 'ok 1 - a\n  duration_ms: 10'; });
+  assert.deepEqual(fetched, [20], 'the skipped job has no log and is not sampled');
+  assert.ok(!result.sources.some(source => source.status === 'log-unavailable'));
+});

@@ -9,6 +9,10 @@ const LOG_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z /;
 const SUMMARY = /^(\s*)(\d+) (failed|flaky|passed|skipped|did not run)\b/;
 const ENTRY = /^\s+(\S+):(\d+):(\d+) › (.+)$/;
 const FAIL_LINE = /^\s*FAIL\s+(\S.*)$/;
+// Vitest "Unhandled Errors": no FAIL line, but the error (often a GitHub
+// ##[error] annotation) is followed by the test file it came from.
+const ORIGINATED = /This error originated in "([^"]+)" test file/;
+const ERROR_LINE = /^\s*(?:##\[error\])?\s*((?:[A-Z][A-Za-z]*)?(?:Error|Exception)\b.*)$/;
 
 export function extractFailedTests(text) {
   const tests = [];
@@ -20,8 +24,19 @@ export function extractFailedTests(text) {
     tests.push(entry);
   };
   const lines = String(text ?? '').split(/\r?\n/);
+  let lastError = null;
   for (let i = 0; i < lines.length; i++) {
     const body = lines[i].replace(LOG_STAMP, '');
+    const error = ERROR_LINE.exec(body);
+    if (error) lastError = { text: error[1].trim().slice(0, NAME_LIMIT), index: i };
+    const origin = ORIGINATED.exec(body);
+    if (origin) {
+      // Pair with the error printed just above it; Vitest prints them together.
+      const message = lastError && i - lastError.index <= 40 ? lastError.text : 'Unhandled error';
+      add({ name: message, location: { file: origin[1], line: null, column: null }, source: 'vitest-unhandled', message: [message] });
+      lastError = null;
+      continue;
+    }
     const fail = FAIL_LINE.exec(body);
     if (fail) { add({ name: fail[1].trim(), location: null, source: 'vitest' }); continue; }
     // "N failed" opens a block of deeper-indented "file:line:column › title"
@@ -43,5 +58,6 @@ export function extractFailedTests(text) {
 export function formatFailedTest(entry) {
   if (!entry) return '';
   const title = String(entry.name ?? '');
-  return (entry.location?.file ? `${entry.location.file}:${entry.location.line} › ${title}` : title).slice(0, NAME_LIMIT);
+  const where = entry.location?.file ? (entry.location.line ? `${entry.location.file}:${entry.location.line}` : entry.location.file) : null;
+  return (where ? `${where} › ${title}` : title).slice(0, NAME_LIMIT);
 }

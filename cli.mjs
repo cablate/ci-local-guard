@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -60,8 +60,8 @@ function options(args) {
   const result = {};
   for (let index = 0; index < args.length; index += 1) {
     const key = args[index];
-    if (!['--repo', '--base', '--head', '--event', '--worktree', '--json', '--ref', '--base-ref', '--head-ref', '--with-plan', '--pr-action', '--pr-fork', '--check', '--summary', '--output'].includes(key)) throw new Error(`Unknown option: ${key}`);
-    if (['--worktree', '--json', '--with-plan', '--check', '--summary'].includes(key)) {
+    if (!['--repo', '--base', '--head', '--event', '--worktree', '--json', '--ref', '--base-ref', '--head-ref', '--with-plan', '--pr-action', '--pr-fork', '--check', '--summary', '--output', '--force'].includes(key)) throw new Error(`Unknown option: ${key}`);
+    if (['--worktree', '--json', '--with-plan', '--check', '--summary', '--force'].includes(key)) {
       result[key.slice(2)] = true;
     } else {
       if (!args[index + 1] || args[index + 1].startsWith('--')) throw new Error(`Missing value for ${key}`);
@@ -102,7 +102,29 @@ async function actionlintBinary() {
   return binary;
 }
 
-function installHook(repo) {
+// Hooks that setting a local core.hooksPath would silently stop running:
+// executable files in .git/hooks, and a hooks path inherited from global or
+// system Git config.
+function bypassedHooks(repo) {
+  const found = [];
+  const dir = git(repo, ['rev-parse', '--git-path', 'hooks']);
+  const hooksDir = path.resolve(repo, dir);
+  if (existsSync(hooksDir)) {
+    for (const name of readdirSync(hooksDir)) {
+      if (name.endsWith('.sample')) continue;
+      const file = path.join(hooksDir, name);
+      const info = statSync(file);
+      // Windows has no execute bit; Git runs any hook file there.
+      if (info.isFile() && (process.platform === 'win32' || (info.mode & 0o111))) found.push(`.git/hooks/${name}`);
+    }
+  }
+  const inherited = git(repo, ['config', '--get', 'core.hooksPath'], { allowMissing: true });
+  const local = git(repo, ['config', '--local', '--get', 'core.hooksPath'], { allowMissing: true });
+  if (inherited && !local) found.push(`global or system core.hooksPath ${inherited}`);
+  return found;
+}
+
+function installHook(repo, { force = false } = {}) {
   for (const name of ['pre-push', 'pre-commit']) {
     const hook = path.join(toolRoot, 'hooks', name);
     // An executable shared/read-only installation needs no permission mutation.
@@ -119,6 +141,12 @@ function installHook(repo) {
   if (current === '.githooks' && existsSync(path.resolve(repo, current))) {
     throw new Error('Existing .githooks directory is active; refusing to replace it automatically');
   }
+  const bypassed = bypassedHooks(repo);
+  if (bypassed.length && !force) {
+    throw new Error(`Installing would stop these existing hooks from running: ${bypassed.join(', ')}. `
+      + 'Guard does not chain to other hooks. Keep your hooks and run Guard from them, or re-run with --force to replace them for this repository.');
+  }
+  if (bypassed.length) diagnostic(`[ci-local-guard] --force: these hooks will no longer run in this repository: ${bypassed.join(', ')}\n`);
   git(repo, ['config', '--local', 'ci-local-guard.previousHooksPath', current || '<default>']);
   git(repo, ['config', '--local', 'core.hooksPath', HOOKS_PATH]);
   diagnostic(`[ci-local-guard] Installed local pre-push hook outside the project repository. Previous path: ${current || '(default)'}\n`);
@@ -415,6 +443,7 @@ Local repository commands (require Git; trust project code before execution):
     Executes project code. Empty secrets/vars, no Docker socket, no ambient act config. Removes only
     this run's containers, networks and volumes. Exit 0 passed, 1 a workflow step failed, 2 blocked, 3 incomplete.
   preflight --repo <project> --base <ref> [--head <ref>] [--event pull_request|push|workflow_dispatch] [--json] [--with-plan]
+    Experimental project-adapter path (descriptor/receipt/hooks). The ci commands above need none of it.
     --with-plan: generic committed adapter; accepts plan ref context; fresh execution and receipt required
   plan --repo <project> --base <ref> --head <ref> [--event pull_request|push|workflow_dispatch] [--json]
     Generic committed plan: [--ref refs/heads/name] or PR [--base-ref name] [--head-ref name] [--pr-action opened] [--pr-fork true|false]
@@ -422,6 +451,7 @@ Local repository commands (require Git; trust project code before execution):
   doctor --check --json --repo <project> (read-only setup; no downloads or adapter execution)
   preflight / doctor --check: --summary (compact JSON), --output <new-file> (full historical report; no overwrite)
   CI_LOCAL_GUARD_TIMEOUT_SECONDS: positive integer; default 900. Plan remains limited to 30 seconds.
+  install-hook --repo <project> [--force]
   pre-push --repo <project> [--json] < Git-pre-push-update-records
 
 Generic push requires explicit committed local policy, exact plan and fresh receipt; not a Hosted CI verdict.
@@ -523,7 +553,7 @@ See README.md for schemas, side effects and unverified protection boundaries.
   } else if (verb === 'install-hook') {
     const config = preflightConfiguration(repo);
     if (config.source !== 'committed-descriptor' || !config.pushPolicy || !config.plan || config.receipt === 'none') throw new Error('Hook installation requires explicit committed local push policy, plan and receipt');
-    installHook(repo);
+    installHook(repo, { force: Boolean(opts.force) });
   } else if (verb === 'uninstall-hook') {
     uninstallHook(repo);
   } else if (verb === 'pre-push') {

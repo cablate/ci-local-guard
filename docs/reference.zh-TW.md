@@ -180,6 +180,8 @@ step 失敗時，failures 會列出 job、matrix leg、step 名稱、workflow �
 
 ## 接入專案
 
+這條路線——adapter、descriptor、receipt、plan、push policy 與 hooks（preflight、plan、install-hook、pre-push、pre-commit）——是**實驗功能**：它早於 ci 命令且需要專案設定。上面的 ci 命令不需要它就能涵蓋大多數需求。
+
 Guard 沿用專案原本的測試。接入時要做的，是把這些測試接到工具上：
 
 | 名稱 | 用途 |
@@ -354,7 +356,7 @@ pre-push 使用 Git 提供的 remote old SHA 比較。缺舊物件、新的遠�
 
 ### 安裝或移除 hooks
 
-取得專案同意後，依需要分別執行：
+安裝時若會讓既有 hooks 停止運作（.git/hooks 內的檔案，或繼承的全域 core.hooksPath）會被拒絕；`--force` 可覆蓋，Guard 不會鏈結其他 hooks。取得專案同意後，依需要分別執行：
 
 ```sh
 ci-local-guard install-hook --repo <project>

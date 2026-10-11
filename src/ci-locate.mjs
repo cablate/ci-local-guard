@@ -132,7 +132,7 @@ export function readSection(lines, section) {
   const text = lines.slice(section.first, section.last).map(line => line.text).join('\n');
   for (const entry of extractFailedTests(text)) {
     if (tests.some(item => item.name === entry.name.slice(0, 300))) continue;
-    tests.push({ name: entry.name.slice(0, 300), location: entry.location, failedAt: null, message: [], source: entry.source,
+    tests.push({ name: entry.name.slice(0, 300), location: entry.location, failedAt: null, message: entry.message || [], source: entry.source,
       startByte: section.startByte, endByte: section.endByte });
   }
   return { errors, tests, tail };

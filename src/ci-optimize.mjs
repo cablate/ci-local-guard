@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { discoverCi } from './ci-discovery.mjs';
-import { collectHistory, hostedNames, measure } from './ci-history.mjs';
+import { collectHistory, criticalJob, hostedNames, measure, needsResolver } from './ci-history.mjs';
 import { githubGet } from './ci-runs.mjs';
 import { isMap, LineCounter, parseDocument } from './vendor/yaml/index.js';
 
@@ -175,12 +175,12 @@ function historyAnalyze(workflow, exported, analyzedPaths = new Set()) {
   const finishedLast = new Map();
   const familyOf = new Map(); // hosted job name -> runner family from its observed labels
   const stepSeconds = new Map(); // `${hostedJobName}\0${stepName}` -> [seconds]
+  // Same rule as ci history: a short gate job that only waits hands the
+  // critical path back to the job it waited on.
+  const needsOf = needsResolver(workflow);
   for (const attempt of successes) {
-    const ended = attempt.jobs.filter(job => job.completedAt !== null);
-    if (ended.length) {
-      const last = ended.reduce((a, b) => (b.completedAt > a.completedAt ? b : a));
-      finishedLast.set(last.name, (finishedLast.get(last.name) || 0) + 1);
-    }
+    const critical = criticalJob(attempt.jobs, needsOf);
+    if (critical) finishedLast.set(critical.job.name, (finishedLast.get(critical.job.name) || 0) + 1);
     for (const job of attempt.jobs) {
       if (job.os && !familyOf.has(job.name)) familyOf.set(job.name, runnerFamily(job.os));
       if (job.seconds === null || job.conclusion === 'skipped') continue;

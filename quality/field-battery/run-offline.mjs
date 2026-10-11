@@ -729,7 +729,6 @@ S.push({
 });
 S.push({
   name: 'adopt-hook-install-silently-bypasses-dotgit-hooks',
-  known: '#10',
   // hooksPath redirects every hook (pre-push, commit-msg, post-checkout, git-lfs...) away from .git/hooks.
   run() {
     const d = adoptProject('adopt-hk-dotgit');
@@ -746,7 +745,6 @@ S.push({
 });
 S.push({
   name: 'adopt-hook-install-silently-overrides-global-hookspath',
-  known: '#10',
   run() {
     const d = adoptProject('adopt-hk-global');
     const globalDir = path.join(ROOT, 'tmp', 'adopt-global-hooks');

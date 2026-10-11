@@ -5,6 +5,16 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- Guard is repositioned around what field reports showed actually helps: failure diagnosis (`ci locate`), workflow review (`ci diff`, `ci check`) and timing analysis lead the README; local replay (`ci verify`, `ci replay`) is optional, and the project-adapter/push-hook path (preflight, plan, descriptors, receipts, hooks) is marked experimental.
+
+### Fixed
+- `ci history` and `ci optimize` no longer report a short aggregator gate job as the critical path: when the last-finishing job is shorter than half of a job it needs, the wait is attributed to that job (from declared `needs`, or from timing when the workflow is not mapped), and the gate is listed beside it. A gate job that fails only because a needed job failed is counted apart in `failures.byJob` (`downstreamOfFailedNeeds`), not as a second failure.
+- `ci history` separates flaky failures using hosted data alone: an attempt that failed and later passed on the same commit is reported under `failures.flaky` with its own cost, marked in `failures.attempts`, and `--reproduce` skips those commits instead of replaying them. `--reproduce` also prints an estimate from hosted job durations and one progress line per commit on stderr (stdout stays JSON).
+- Vitest runs that end with "Unhandled Errors" (no FAIL line) now contribute to `failedTests`: the error line (often a `##[error]` annotation) is paired with the `originated in "<file>"` line below it, in both `ci locate` and `ci replay`.
+- `--test-timing` samples only attempts where the job's own conclusion is success; a skipped job no longer surfaces as `log-unavailable`.
+- `install-hook` refuses when installing would stop existing hooks from running (executable files in `.git/hooks`, or an inherited global/system `core.hooksPath`), saying which; `--force` overrides and the refusal conditions are documented.
+
 ## [0.2.3] - 2026-10-11
 
 Fixes from the third field report (#7) against the two surfaces added in 0.2.2: `ci optimize` findings are more accurate, and host-executable and reproduce commands say which shell and directory each step expects.

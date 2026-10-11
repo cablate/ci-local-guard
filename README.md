@@ -3,41 +3,38 @@
 
 ![CI Local Guard — a commit passes through an optical inspection bench and becomes a check report.](assets/banner/banner.webp)
 
-**Give your coding AI a way to check its work before pushing—and investigate slow CI afterward.**
+**A CI failure-diagnosis and workflow-review tool for your coding AI.**
 
-Your AI finishes a change, pushes it, and then CI catches a failing test. You send the logs back, the AI fixes something, and you wait again.
+Your AI finishes a change, pushes it, and CI fails. Now what? Pasting a whole log into the conversation wastes time and context; guessing wastes a push. Guard gives your AI the shortest path to the cause: which job and step failed, which test at which file and line, and exactly which part of the log to read.
 
-CI Local Guard helps shorten that loop. It runs your project's existing checks against the commit you plan to push, then gives the AI a report: what ran, what failed, where to read the logs, and what still needs checking.
+It also answers the question before it becomes an outage: after you edit a workflow, does CI now check less for the same changes? And it reads GitHub Actions timings — with flaky failures separated from real ones — so speed work goes where the wait actually is.
 
-It also reads GitHub Actions timings so you and your AI can investigate slow jobs and compare a proposed improvement with earlier runs.
+- **Diagnose a failed run.** `ci locate` names the failed job, step, workflow line and failing tests, and saves just that step's log section for paged reading.
+- **Review a workflow change.** `ci diff` shows what runs less, more or cannot be determined after your edit; `ci check` scans the workflow statically.
+- **Understand slow CI.** `ci history` separates flaky failures (passed later on the same commit) from persistent ones, follows gate jobs to the job that actually sets the wait, and prices failed runs in minutes.
+- **Optional: replay a job locally before pushing.** `ci verify` / `ci replay` run the Linux jobs of a commit in local containers. Most projects do not need this to get the value above.
 
-## What can you use it for?
-
-- **Check a commit before pushing.** Run your existing test scripts in a separate checkout, without mixing in unfinished edits.
-- **Help your AI handle failures.** Give it a short JSON report and the relevant part of a log instead of pasting everything into a conversation.
-- **Find out why CI is slow.** Inspect job and step timings, then compare runs before and after a change.
-
-Guard works alongside your CI. It handles checks that can run locally; GitHub Actions still covers things that need the hosted environment.
+Guard works alongside your CI. It reads what GitHub already knows and runs locally what can run locally; GitHub Actions still covers things that need the hosted environment.
 
 ## Let your AI set it up
 
 Give your AI this repository link and a request like this:
 
-> Help me use https://github.com/cablate/ci-local-guard in my project. Read its README and setup guide, look at my existing CI and test commands, then connect Guard to those checks. Show me how to use it while editing, before pushing, and when investigating slow CI.
+> Help me use https://github.com/cablate/ci-local-guard in my project. Read its README and docs, then when a CI run fails use ci locate to find the cause, and before we merge workflow changes use ci diff to check nothing is lost.
 
-Your AI will need to read project files and run Node commands. The [AI entry point](#ai-entry-point) below explains the setup; you do not need to write a new test suite.
+Your AI will need to read project files and run Node commands; diagnosing GitHub runs also needs a signed-in GitHub CLI (gh). No project setup or adapter is required for these commands.
 
 ## Install the CLI
 
 You need Node 22 (>=22.13.0 <23) and Git. Clone the tool into its own directory:
 
 ```sh
-git clone --branch v0.2.0 --depth 1 https://github.com/cablate/ci-local-guard.git
+git clone --branch v0.3.0 --depth 1 https://github.com/cablate/ci-local-guard.git
 node ci-local-guard/cli.mjs --version
 node ci-local-guard/cli.mjs --help
 ```
 
-The version command should print 0.2.0. You can share this installation across projects.
+The version command should print 0.3.0. You can share this installation across projects.
 
 No npm account is needed. Downloads are also available in [GitHub Releases](https://github.com/cablate/ci-local-guard/releases). This tool is distributed through GitHub, not the npm registry.
 
@@ -56,53 +53,45 @@ Restart Claude Code and use /ci-local-guard:ci. The plugin bundles the same CLI 
 
 ## AI entry point
 
-Read the [setup guide and command reference](docs/reference.md) before connecting a project. The usual workflow is:
+Read the [command reference](docs/reference.md) first. The usual workflow:
 
-1. **Look at the project first.** Identify the repository, current branch, unfinished edits and existing test commands.
-2. **Connect those checks.** A small project-owned script—called an adapter—runs the existing commands and reports their results. The project's .ci-local-guard.json tells Guard where to find it.
-3. **Check the right version.** While editing, use the project's normal targeted tests. Before pushing, use Guard to check a specific commit against an explicit base.
-4. **Read the result and act on it.** Tell the user what passed, what failed and what remains to be checked. Use the report's log locations to investigate failures.
+1. **A GitHub run failed.** `ci locate` finds the runs for your HEAD commit (or one run with `--run <id>`), names the failed job, step, workflow line and failing tests with file and line, and saves that step's log for `read-evidence` paged reading.
+2. **You changed a workflow.** `ci diff` compares two commits for the same events and files: what runs less, more or cannot be determined. `ci check` adds a static scan (actionlint, zizmor).
+3. **CI is slow.** `ci history` shows the wait-setting job (gate jobs traced to what they wait on), separates flaky failures from persistent ones, and prices failed runs. `ci optimize` turns that into candidate findings with evidence.
+4. **Starting on an unknown repository.** `ci discover` lists what CI runs, which jobs could replay locally and which commands to use.
 
-Start by checking the project's setup:
+### Experimental: project adapters and push hooks
+
+The preflight path — a project-owned adapter script, a `.ci-local-guard.json` descriptor, receipts, and the `install-hook` pre-push gate — is **experimental**. It predates the `ci` commands, needs project setup, and its hook does not chain with hooks you already have (installing refuses rather than silently disable them; `--force` overrides). Do not build on it unless you specifically want commit-gated project checks:
 
 ```sh
 node "<tool-directory>/cli.mjs" doctor --check --repo "<consumer-path>" --summary
+node "<tool-directory>/cli.mjs" preflight --repo "<consumer-path>" --base <base> --head <commit> --summary
 ```
 
-This reads configuration without running the project's tests. Once the adapter is committed, check a candidate commit:
+The [reference](docs/reference.md) documents the full contract.
+
+## Optional: replay a job locally before pushing
+
+These commands read your GitHub workflows directly and need no adapter. Replaying jobs needs [act](https://github.com/nektos/act) 0.2.89 and Docker with Linux containers.
 
 ```sh
-node "<tool-directory>/cli.mjs" preflight --repo "<consumer-path>" --base <base> --head <commit> --summary --output <new-report.json>
-```
-
-Replace the placeholders with actual paths and commits. The output directory must exist; use a new report filename. --summary gives the AI a short JSON response, while --output saves the full report.
-
-An incomplete result means some work is still outside the local check—for example, a browser test that only runs in CI. The [result guide](docs/reference.md) explains how to handle each outcome.
-
-## Catch CI failures before pushing
-
-Added in v0.2.0. These commands need no adapter; they read your GitHub workflows directly. Replaying jobs needs [act](https://github.com/nektos/act) 0.2.89 and Docker with Linux containers.
-
-```sh
-node "<tool-directory>/cli.mjs" ci discover --repo "<project>" --summary
 node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary
-node "<tool-directory>/cli.mjs" ci locate --repo "<project>" --summary
-node "<tool-directory>/cli.mjs" ci diff --repo "<project>" --summary
+node "<tool-directory>/cli.mjs" ci replay --repo "<project>" --workflow .github/workflows/ci.yml --job test --summary
 ```
 
-discover tells your AI which commands CI runs, which jobs can run locally and which only GitHub can check. verify takes the commit you are about to push, works out which workflows it triggers, and runs the Linux jobs in local containers. It reports what is expected to fail, with the failing step, command and log location, and what still needs GitHub, such as Windows jobs or jobs that use secrets. If a GitHub run still fails, locate finds the runs for your HEAD commit and points to the failed job, step and tests with their file and line. It saves that step's log locally so the AI reads only the part it needs. After editing a workflow, diff shows whether CI now checks less for the same changes, such as a dropped matrix leg, a narrower filter or a deleted command. Details are in the [reference](docs/reference.md#understand-check-and-replay-ci).
+verify takes the commit you are about to push, works out which workflows it triggers, and runs the Linux jobs in local containers. It reports what is expected to fail, with the failing step, command and log location, and what still needs GitHub, such as Windows jobs or jobs that use secrets. replay runs a single job on demand; on a Windows host, verify also lists the commands of matching hosted-only legs so your AI can run them in the working tree. Details are in the [reference](docs/reference.md#understand-check-and-replay-ci).
 
 ## Investigate slow CI
 
-You can use this part without setting up an adapter. With GitHub CLI (gh) already signed in:
+With GitHub CLI (gh) already signed in:
 
 ```sh
-node "<tool-directory>/cli.mjs" collect-runs --repository owner/repo --workflow ci.yml > runs.json
-node "<tool-directory>/cli.mjs" inspect-runs --input runs.json
-node "<tool-directory>/cli.mjs" audit-runs --input runs.json
+node "<tool-directory>/cli.mjs" ci history --repo "<project>" --workflow ci.yml --summary
+node "<tool-directory>/cli.mjs" ci optimize --repo "<project>" --summary
 ```
 
-These commands collect run metadata and show where time is spent. Your AI can then investigate a slow step, propose a change, and use compare-runs to compare the before-and-after runs. The aim is to remove unnecessary work, not necessary tests.
+history separates flaky failures (they passed later on the same commit — nothing a pre-push check could catch) from persistent ones, and its `--reproduce` replays only the persistent commits, skipping flakes. The offline collectors (`collect-runs`, `inspect-runs`, `audit-runs`, `compare-runs`) analyze saved exports. The aim is to remove unnecessary work, not necessary tests.
 
 ## Field battery
 
@@ -135,8 +124,10 @@ Guard runs your project's scripts with your local permissions, so use it with pr
 
 ## Project status
 
-[v0.2.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.2.0) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/37925557268) pass. The release archive and Claude Code 2.1.293 plugin installation, upgrade and removal were last tested on v0.1.1. macOS, arm64, Claude Desktop and WSL have not been tested.
+[v0.3.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.3.0) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/37925557268) pass, and a field battery of real-project scenarios runs in CI on every push. The release archive and Claude Code 2.1.293 plugin installation, upgrade and removal were last tested on v0.1.1. macOS, arm64, Claude Desktop and WSL have not been tested.
 
-We use Guard to check this repository too. v0.2.0 adds pre-push checking with ci discover, ci check, ci replay and ci verify, ci history for what failures and slow jobs cost, ci locate for failed GitHub runs, and ci diff for workflow changes. Replay has been tested on Windows with Docker Desktop (Linux containers), and with Guard itself running in a Linux container against the same Docker engine, including Ctrl-C cleanup. A native Linux machine and macOS have not been tested.
+Guard's focus is failure diagnosis (ci locate), workflow review (ci diff, ci check) and timing analysis (ci history, ci optimize); local replay (ci verify, ci replay) is optional, and the project-adapter/push-hook path is experimental. Four rounds of field reports from a real 12-workflow project shaped this: what actually helped is now what leads.
+
+We use Guard to check this repository too. Replay has been tested on Windows with Docker Desktop (Linux containers), and with Guard itself running in a Linux container against the same Docker engine, including Ctrl-C cleanup. A native Linux machine and macOS have not been tested.
 
 Found something confusing or broken? [Open an issue](https://github.com/cablate/ci-local-guard/issues) with your tool version, operating system and a small example.
