@@ -5,6 +5,12 @@
 
 ## [未發布]
 
+## [0.2.3] - 2026-10-11
+
+第三份實測回報（#7）針對 0.2.2 新增的兩個功能的修正：`ci optimize` 的 findings 更準確，host-executable 與重現命令會說明每個 step 該用的 shell 與目錄。
+
+**升級：** 更新 GitHub archive／clone 或 Claude marketplace plugin，確認 `--version` 顯示 0.2.3。無需遷移；命令、設定與 receipts 都不變。
+
 ### 修正
 - `ci optimize --workflow <caller>.yml` 在被呼叫的 workflow 不在選取範圍、但每個 job 都已有 timeout 時，不再把 reusable call job 報成沒有上限。
 - `ci verify` 的 host-executable 命令與 `ci locate` 的重現命令會附上每個 step 該用的 shell（宣告的，或 runner 預設，例如 Windows 的 pwsh）與工作目錄（依序取 step、job `defaults.run`、workflow `defaults.run`）；run step 超過 12 個時，`hostExecutable` 會標 `totalCommands` 與 `truncated`。
@@ -117,3 +123,4 @@ field-report 迴圈的三項新增：`ci optimize` 列出附證據的效率改�
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0
 [0.2.1]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...v0.2.1
 [0.2.2]: https://github.com/cablate/ci-local-guard/compare/v0.2.1...v0.2.2
+[0.2.3]: https://github.com/cablate/ci-local-guard/compare/v0.2.2...v0.2.3

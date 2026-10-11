@@ -5,6 +5,12 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-11
+
+Fixes from the third field report (#7) against the two surfaces added in 0.2.2: `ci optimize` findings are more accurate, and host-executable and reproduce commands say which shell and directory each step expects.
+
+**Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.2.3. No migration needed; commands, configuration and receipts are unchanged.
+
 ### Fixed
 - `ci optimize --workflow <caller>.yml` no longer reports a reusable call job as unbounded when the called workflow, outside the selection, already gives every job a timeout.
 - `ci verify` host-executable commands and the `ci locate` reproduce command carry the shell each step expects (declared, or the runner default such as pwsh on Windows) and its working directory (step, then job `defaults.run`, then workflow `defaults.run`); `hostExecutable` reports `totalCommands` and `truncated` when more than 12 run steps exist.
@@ -117,3 +123,4 @@ Install from GitHub without an npm account. The first experimental release bring
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0
 [0.2.1]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...v0.2.1
 [0.2.2]: https://github.com/cablate/ci-local-guard/compare/v0.2.1...v0.2.2
+[0.2.3]: https://github.com/cablate/ci-local-guard/compare/v0.2.2...v0.2.3
