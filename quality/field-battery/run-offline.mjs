@@ -210,7 +210,8 @@ S.push({
 });
 S.push({
   name: 'preflight-generic-without-policy',
-  run() { return run(['preflight', '--repo', REAL_REPO, '--base', 'HEAD~3', '--head', 'HEAD', '--json']); },
+  // Preflight runs the checks the change selects; on this checkout that can be the full node --test suite.
+  run() { return run(['preflight', '--repo', REAL_REPO, '--base', 'HEAD~3', '--head', 'HEAD', '--json'], { timeoutMs: 300000 }); },
   expect: r => [!r.json ? `no JSON (exit=${r.code})` : null].filter(Boolean),
   note: r => `${r.json?.outcome} ${(r.json?.issues || []).map(i => i.code).join(',')}`,
 });
@@ -223,7 +224,6 @@ const callerWorkflows = () => ({
 const findingCodes = r => (r.json?.findings || []).map(f => `${f.code}:${f.job || ''}`);
 for (const filtered of [false, true]) S.push({
   name: `optimize-call-job-bounded${filtered ? '-filtered' : ''}`,
-  ...(filtered ? { known: '#7' } : {}),
   run() { const d = makeRepo('opt-call', callerWorkflows()); return run(['ci', 'optimize', '--repo', d, ...(filtered ? ['--workflow', 'release.yml'] : []), '--json']); },
   expect: r => [!r.json ? `no JSON (exit=${r.code})` : null,
     findingCodes(r).includes('missing-timeout-minutes:verify') ? 'call job reported unbounded although every called job has timeout-minutes' : null].filter(Boolean),
@@ -232,30 +232,34 @@ for (const filtered of [false, true]) S.push({
 S.push({
   name: 'optimize-concurrency-without-cancel',
   run() { const d = makeRepo('opt-conc', { '.github/workflows/pr.yml': 'name: PR\non: [pull_request]\nconcurrency:\n  group: pr-${{ github.ref }}\njobs:\n  t:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo ok\n' }); return run(['ci', 'optimize', '--repo', d, '--json']); },
-  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null].filter(Boolean),
-  note: r => `${r.json?.outcome} [${findingCodes(r).join(',')}] (a group without cancel-in-progress queues, it does not cancel)`,
+  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null,
+    !(r.json?.findings || []).some(f => f.code === 'missing-concurrency-cancel' && f.evidence?.concurrency === 'queues-without-cancel') ? 'a pull request group without cancel-in-progress not reported as queueing' : null].filter(Boolean),
+  note: r => `${r.json?.outcome} [${findingCodes(r).join(',')}]`,
 });
 S.push({
   name: 'optimize-global-tool-install',
   run() { const d = makeRepo('opt-global', { '.github/workflows/ci.yml': 'name: CI\non:\n  push:\n    tags: [\'v*\']\njobs:\n  t:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: npm install -g npm@11\n      - run: pip install --user pipx\n' }); return run(['ci', 'optimize', '--repo', d, '--json']); },
-  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null].filter(Boolean),
-  note: r => `${r.json?.outcome} [${findingCodes(r).join(',')}] (global tool installs, not lockfile dependencies)`,
+  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null,
+    findingCodes(r).some(code => code.startsWith('uncached-dependency-install')) ? 'global tool installs reported as dependency installs' : null].filter(Boolean),
+  note: r => `${r.json?.outcome} [${findingCodes(r).join(',')}]`,
 });
 S.push({
   name: 'verify-host-executable-shell-and-dir',
-  known: '#7',
   skip: process.platform !== 'win32' && 'hostExecutable lists windows legs only on a Windows host',
   run() {
     const steps = Array.from({ length: 14 }, (_, i) => `      - run: echo step${i + 1}\n`).join('');
-    const d = makeRepo('verify-hostexec', { '.github/workflows/win.yml': `name: Win\non: [push]\njobs:\n  win:\n    runs-on: windows-latest\n    timeout-minutes: 5\n    defaults:\n      run:\n        shell: bash\n        working-directory: app\n    steps:\n${steps}` });
+    const d = makeRepo('verify-hostexec', { '.github/workflows/win.yml': `name: Win\non: [push]\njobs:\n  win:\n    runs-on: windows-latest\n    timeout-minutes: 5\n    defaults:\n      run:\n        shell: bash\n        working-directory: app\n    steps:\n${steps}  plain:\n    runs-on: windows-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo plain\n` });
     return run(['ci', 'verify', '--repo', d, '--event', 'push'], { timeoutMs: 300000 });
   },
   expect: r => {
-    const leg = r.json?.hostExecutable?.[0];
-    if (!leg) return [`no hostExecutable leg (exit=${r.code}, outcome=${r.json?.outcome})`];
-    return [leg.commands.length < 14 && !Object.keys(leg).some(k => /truncat|omitted|total/i.test(k)) ? `commands cut to ${leg.commands.length}/14 with no truncation marker` : null,
-      !JSON.stringify(leg).includes('"app"') ? 'defaults.run.working-directory (app) not carried' : null,
-      !JSON.stringify(leg).includes('bash') ? 'defaults.run.shell (bash) not carried; the windows default is pwsh' : null].filter(Boolean);
+    const legs = r.json?.hostExecutable || [];
+    const leg = legs.find(item => item.job === 'win');
+    const plain = legs.find(item => item.job === 'plain')?.commands?.[0];
+    if (!leg) return [`no hostExecutable leg for win (exit=${r.code}, outcome=${r.json?.outcome})`];
+    return [leg.totalCommands !== 14 || leg.truncated !== true ? `totalCommands=${leg.totalCommands} truncated=${leg.truncated} (expected 14, true)` : null,
+      leg.commands.some(c => c.workingDirectory !== 'app') ? 'defaults.run.working-directory (app) not carried on every command' : null,
+      leg.commands.some(c => c.shell !== 'bash' || c.shellSource !== 'declared') ? 'declared defaults.run.shell (bash) not carried on every command' : null,
+      plain?.shell !== 'pwsh' ? `undeclared shell on windows is ${plain?.shell}, expected the runner default pwsh` : null].filter(Boolean);
   },
   note: r => `${r.json?.outcome} legs=${r.json?.hostExecutable?.length} commands=${r.json?.hostExecutable?.[0]?.commands?.length}`,
 });
