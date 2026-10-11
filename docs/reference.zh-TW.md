@@ -31,7 +31,7 @@ node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary --output 
 
 verify 回答一個問題：這個 commit 推上去，什麼會失敗？它依 branch、tag、path 篩選判斷這次 push（或 --event pull_request）會觸發哪些 workflows，執行靜態檢查，再重播每個會被觸發的 Linux job leg。被重播 job needs 的 jobs 會一併執行。變更檔案來自 --base（push 預設為分支的 upstream，pull_request 預設為 origin 的預設分支）；判斷不了時，有 path 篩選的 workflow 標為未知，仍會檢查。
 
-verdict 是一句話的總結。expectedFailures 列出靜態 findings 與重播失敗的 step，附命令與 log 位置。passedLocally 列出已重播通過的 leg。hostedOnly 列出只有 GitHub 能檢查的部分：Windows 或 macOS runner、用到 secrets 或部署環境的 jobs。notVerified 列出本機無法檢查的項目與原因，例如缺 act，或只被呼叫的 reusable workflow。notTriggered 列出這個事件不會啟動的 workflows，以及排除它的篩選條件；這些 workflow 的靜態 findings 改列在 staticOutsideTrigger，看得到但不算失敗。你用 --platform 映射過的 label，其 runner-label finding 記在 staticCheck.mappedRunnerLabels，不進 expectedFailures。重播只因本機映像檔缺少 Hosted runner 預裝的東西（例如系統函式庫）而失敗時，會以 stage replay-environment 列在 notVerified，不算預期失敗。
+verdict 是一句話的總結。expectedFailures 列出靜態 findings 與重播失敗的 step，附命令與 log 位置。passedLocally 列出已重播通過的 leg。hostedOnly 列出只有 GitHub 能檢查的部分：Windows 或 macOS runner、用到 secrets 或部署環境的 jobs。當這類 leg 的 runner 家族與本機相符（Windows 主機上的 windows leg、Mac 上的 macOS leg）時，hostExecutable 會附上該 job 的 run 命令與行號，nextActions 並帶 run-host-commands 建議：在工作目錄執行這些命令，可把推前覆蓋擴到重播到不了的平台。這只是建議——未隔離、含未提交修改、絕不計入重播，Hosted run 仍然必要。notVerified 列出本機無法檢查的項目與原因，例如缺 act，或只被呼叫的 reusable workflow。notTriggered 列出這個事件不會啟動的 workflows，以及排除它的篩選條件；這些 workflow 的靜態 findings 改列在 staticOutsideTrigger，看得到但不算失敗。你用 --platform 映射過的 label，其 runner-label finding 記在 staticCheck.mappedRunnerLabels，不進 expectedFailures。重播只因本機映像檔缺少 Hosted runner 預裝的東西（例如系統函式庫）而失敗時，會以 stage replay-environment 列在 notVerified，不算預期失敗。
 
 | 結果 | 意義 | Exit |
 |---|---|---|
@@ -107,6 +107,14 @@ diff 比較兩個 commit 已提交的 workflows，回答：同一個事件、同
 | undetermined | 沒發現減少，但有修改無法求值 | 3 |
 
 減少可能是刻意的，例如只改文件時不跑 CI。報告把它列出來，讓 AI 先跟使用者確認，而不是事後才發現。想比較實際執行結果時，nextActions 會建議用 ci replay 在兩個 commit 上重播受影響的 job。
+
+### 找出效率改善候選
+
+```sh
+node "<tool-directory>/cli.mjs" ci optimize --repo "<project>" [--workflow <file.yml>] --summary
+```
+
+讀已提交的 workflow 結構，gh 可用時再讀該 workflow 的 Hosted 歷史（最多 15 個已完成 run，唯讀）。靜態 findings：job 層與 workflow 層都沒有 timeout-minutes（impact risk——限制的是最壞情況，GitHub 預設上限 360 分鐘；不是已發生的浪費）、會重複觸發卻沒有 concurrency 群組、job 內有依賴安裝但完全沒有快取（歷史有資料時附該 step 的中位秒數）。歷史 findings：關鍵路徑 job 的主導 step（占其中位時間 ≥60%）、matrix legs 中位數相差 ≥1.5×、跨平行 job 重複的 setup steps。每個 finding 附 workflow 行號與樣本數，impact 標明它影響等待、總分鐘，還只是風險上限。Findings 是附證據的檢查點，不是已證明的節省——用 ci history --test-timing 量 step 內部，拆分後用 ci replay 驗證再推。Exit 0 clear、1 candidates、2 blocked。Hosted 歷史取不到時 report 為 static-only（coverage.history），歷史 findings 略過，不用猜的。
 
 ### 探索 CI
 

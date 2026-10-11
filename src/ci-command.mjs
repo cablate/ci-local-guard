@@ -6,6 +6,7 @@ import { summarizeVerify, verifyCi, verifyOptions } from './ci-verify.mjs';
 import { historyCi, historyOptions, summarizeHistory } from './ci-history.mjs';
 import { locateCi, locateOptions, summarizeLocate } from './ci-locate.mjs';
 import { diffCi, diffOptions, summarizeDiff } from './ci-diff.mjs';
+import { optimizeCi } from './ci-optimize.mjs';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 
 // New namespace, independent of legacy report envelopes and exit contracts.
@@ -14,7 +15,7 @@ export async function ciCommand(args) {
   let report;
   let summary = false;
   try {
-    if (!['discover', 'check', 'replay', 'verify', 'history', 'locate', 'diff'].includes(args[0])) throw new Error('unsupported-ci-command');
+    if (!['discover', 'check', 'replay', 'verify', 'history', 'locate', 'diff', 'optimize'].includes(args[0])) throw new Error('unsupported-ci-command');
     if (args[0] === 'diff') {
       const opts = diffOptions(args.slice(1));
       summary = opts.summary;
@@ -47,7 +48,7 @@ export async function ciCommand(args) {
       const opts = {};
       for (let i = 1; i < args.length; i++) {
         const key = args[i];
-        const allowed = ['--repo', '--head', '--output', '--summary', '--json', ...(args[0] === 'check' ? ['--provider', '--binary', '--runner-label'] : [])];
+        const allowed = ['--repo', '--head', '--output', '--summary', '--json', ...(args[0] === 'check' ? ['--provider', '--binary', '--runner-label'] : []), ...(args[0] === 'optimize' ? ['--workflow'] : [])];
         if (key === '--runner-label') {
           if (!args[i + 1] || args[i + 1].startsWith('--') || !/^[A-Za-z0-9_.-]{1,128}$/.test(args[i + 1])) throw new Error('invalid-ci-options');
           (opts.runnerLabels ??= []).push(args[++i]);
@@ -63,16 +64,17 @@ export async function ciCommand(args) {
       summary = Boolean(opts['--summary']);
       if (opts['--output']) save = reserveReportOutput(opts['--output']);
       report = args[0] === 'check' ? await checkCi({ repo: opts['--repo'], head: opts['--head'], provider: opts['--provider'], binary: opts['--binary'], runnerLabels: opts.runnerLabels })
+        : args[0] === 'optimize' ? optimizeCi({ repo: opts['--repo'], head: opts['--head'], workflow: opts['--workflow'] })
         : discoverCi({ repo: opts['--repo'], head: opts['--head'], tools: true });
     }
   } catch (error) {
     // Neither provider stderr nor arbitrary Git/configuration data enters JSON.
-    const kind = { check: ['ci-check', 'top-level-github-workflow-static-baseline'], replay: ['ci-replay', 'local-act-replay-of-one-job'], verify: ['ci-verify', 'pre-push-local-verification'], history: ['ci-history', 'hosted-failure-and-timing-history'], locate: ['ci-locate', 'hosted-failure-location'], diff: ['ci-diff', 'workflow-change-coverage'] }[args[0]]
+    const kind = { check: ['ci-check', 'top-level-github-workflow-static-baseline'], replay: ['ci-replay', 'local-act-replay-of-one-job'], verify: ['ci-verify', 'pre-push-local-verification'], history: ['ci-history', 'hosted-failure-and-timing-history'], locate: ['ci-locate', 'hosted-failure-location'], diff: ['ci-diff', 'workflow-change-coverage'], optimize: ['ci-optimize', 'workflow-efficiency-candidates'] }[args[0]]
       || ['ci-inventory', 'committed-source-inventory'];
-    const { stack, message, reportOutputFailure, replayCode, verifyCode, historyCode, locateCode, diffCode, ...detail } = error;
-    const code = error.reportOutputFailure || error.replayCode || error.verifyCode || error.historyCode || error.locateCode || error.diffCode
+    const { stack, message, reportOutputFailure, replayCode, verifyCode, historyCode, locateCode, diffCode, optimizeCode, ...detail } = error;
+    const code = error.reportOutputFailure || error.replayCode || error.verifyCode || error.historyCode || error.locateCode || error.diffCode || error.optimizeCode
       || (/^[a-z-]+$/.test(error.message) ? error.message : 'discovery-failed');
-    report = { schemaVersion: `ci-local-guard/${kind[0]}/v1`, command: `ci ${['check', 'replay', 'verify', 'history', 'locate', 'diff'].includes(args[0]) ? args[0] : 'discover'}`, identity: null,
+    report = { schemaVersion: `ci-local-guard/${kind[0]}/v1`, command: `ci ${['check', 'replay', 'verify', 'history', 'locate', 'diff', 'optimize'].includes(args[0]) ? args[0] : 'discover'}`, identity: null,
       outcome: 'blocked', scope: kind[1],
       issues: [{ code, ...detail }],
       nextActions: [{ kind: 'review-command-inputs', help: ['--help'], automatic: false }],
@@ -92,5 +94,5 @@ export async function ciCommand(args) {
     findingCount: report.findings.length, findingsTruncated: report.findings.length > 20 } : report;
   process.stdout.write(JSON.stringify(output) + '\n');
   process.exitCode = report.reportStorage.status === 'failed' ? 3
-    : ['inventoried', 'passed', 'clear-locally', 'measured', 'unchanged', 'no-reduction'].includes(report.outcome) ? 0 : ['findings', 'failed', 'expected-to-fail', 'located', 'reduced'].includes(report.outcome) ? 1 : ['incomplete', 'undetermined'].includes(report.outcome) ? 3 : 2;
+    : ['inventoried', 'passed', 'clear-locally', 'measured', 'unchanged', 'no-reduction', 'clear'].includes(report.outcome) ? 0 : ['findings', 'failed', 'expected-to-fail', 'located', 'reduced', 'candidates'].includes(report.outcome) ? 1 : ['incomplete', 'undetermined'].includes(report.outcome) ? 3 : 2;
 }

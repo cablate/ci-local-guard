@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { discoverCi } from '../src/ci-discovery.mjs';
-import { planTargets, verifyCi, verifyOptions, summarizeVerify } from '../src/ci-verify.mjs';
+import { hostExecutableLegs, planTargets, verifyCi, verifyOptions, summarizeVerify } from '../src/ci-verify.mjs';
 
 const CI = `name: CI
 on:
@@ -205,4 +205,40 @@ test('--runner-label is repeatable and reaches the static check', async t => {
   assert.deepEqual(seen[0].runnerLabels, ['blacksmith-2vcpu-ubuntu-2404', 'blacksmith-2vcpu-ubuntu-2204']);
   assert.throws(() => verifyOptions(['--runner-label']), /invalid-verify-options/);
   assert.throws(() => verifyOptions(['--runner-label', 'bad label']), /invalid-verify-options/);
+});
+
+test('hosted-only legs whose runner family matches the machine get working-tree commands', t => {
+  const f = fixture(t);
+  const inventory = discoverCi({ repo: f.root });
+  const triggers = inventory.workflows.map(wf => ({ workflow: wf.path, status: wf.path.endsWith('release.yml') ? 'not-triggered' : 'triggered' }));
+  const plan = planTargets(inventory.workflows, triggers);
+  const windows = plan.hostedOnly.find(x => x.job === 'test');
+  assert.deepEqual(windows.labels, ['windows-latest'], 'plan keeps runner labels');
+  const parsed = inventory.workflows.filter(wf => wf.analysis === 'parsed');
+  const onWindows = hostExecutableLegs(plan.hostedOnly, parsed, 'win32');
+  assert.equal(onWindows.length, 1);
+  assert.equal(onWindows[0].job, 'test');
+  assert.equal(onWindows[0].matrix.os, 'windows-latest');
+  const testStep = inventory.workflows.find(wf => wf.path === '.github/workflows/ci.yml').jobs.find(job => job.id === 'test').steps[0];
+  assert.deepEqual(onWindows[0].commands, [{ line: testStep.line, run: 'npm test' }]);
+  assert.match(onWindows[0].limitation, /not isolated/);
+  assert.deepEqual(hostExecutableLegs(plan.hostedOnly, parsed, 'linux'), [], 'a Linux host replay covers these; a mac family does not match either');
+  assert.deepEqual(hostExecutableLegs(plan.hostedOnly, parsed, 'darwin'), []);
+});
+
+test('verify suggests host-executable commands without changing the outcome', async t => {
+  const f = fixture(t);
+  f.write('src/a.js', '3'); f.git('commit', '-qam', 'code');
+  const report = await verifyCi(verifyOptions(['--repo', f.root, '--base', 'main', '--static-only', '--platform', 'ubuntu-latest=node:22']),
+    { discover, check: passCheck, replay: async () => ({ outcome: 'passed', jobs: [], failures: [], issues: [], nextActions: [] }), hostPlatform: 'win32' });
+  assert.equal(report.outcome, 'incomplete', 'static-only keeps replays not-verified; hostExecutable never flips the outcome');
+  assert.equal(report.hostExecutable.length, 1);
+  assert.equal(report.hostExecutable[0].job, 'test');
+  const action = report.nextActions.find(item => item.kind === 'run-host-commands');
+  assert.ok(action, 'a run-host-commands suggestion exists');
+  assert.equal(action.legs[0].job, 'test');
+  assert.equal(action.legs[0].commands[0].run, 'npm test');
+  assert.match(action.note, /not isolated/);
+  const summary = summarizeVerify(report);
+  assert.equal(summary.hostExecutable[0].commands[0].run, 'npm test');
 });

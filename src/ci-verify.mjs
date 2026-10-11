@@ -99,7 +99,7 @@ export function planTargets(workflows, triggers) {
         hostedOnly.push({ ...base, reason: job.environment ? 'uses a deployment environment' : 'uses secrets, which local replay does not have' });
         continue;
       }
-      for (const leg of job.localReplay.hostedOnly) hostedOnly.push({ ...base, matrix: leg.matrix, reason: `runner ${leg.labels.join(',')} has no local Linux stand-in` });
+      for (const leg of job.localReplay.hostedOnly) hostedOnly.push({ ...base, matrix: leg.matrix, labels: leg.labels, reason: `runner ${leg.labels.join(',')} has no local Linux stand-in` });
       for (const item of job.localReplay.unknown) undetermined.push({ ...base, ...(item.matrix ? { matrix: item.matrix } : {}), reason: item.reason });
       if (needed.has(job.id)) continue;
       for (const leg of job.localReplay.replayable) targets.push({ ...base, matrix: leg.matrix, ...(job.if ? { condition: job.if } : {}) });
@@ -108,12 +108,38 @@ export function planTargets(workflows, triggers) {
   return { targets, hostedOnly, undetermined };
 }
 
+// A runner-label family: windows-latest → windows, macos-14 → macos. Mixed or
+// unrecognized families (third-party labels) stay hosted; guessing is worse.
+function runnerFamily(labels) {
+  const families = labels.map(label => /windows/i.test(label) ? 'windows' : /macos|^mac-/i.test(label) ? 'macos'
+    : /ubuntu|linux/i.test(label) ? 'linux' : 'other');
+  return families.every(family => family === families[0]) ? families[0] : 'mixed';
+}
+
+// Hosted-only legs whose runner family matches this machine can at least be
+// exercised in the working tree. These are suggestions with the commands and
+// line numbers — never counted as replayed, never a hosted verdict.
+export function hostExecutableLegs(hostedOnly, workflows, platform = process.platform) {
+  const wanted = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'macos' : null;
+  if (!wanted) return [];
+  const legs = [];
+  for (const item of hostedOnly) {
+    if (!Array.isArray(item.labels) || !/^runner /.test(item.reason) || runnerFamily(item.labels) !== wanted) continue;
+    const job = workflows.find(wf => wf.path === item.workflow)?.jobs?.find(job => job.id === item.job);
+    const commands = (job?.steps || []).filter(step => step.run).slice(0, 12).map(step => ({ line: step.line, run: step.run }));
+    legs.push({ workflow: item.workflow, job: item.job, ...(item.matrix ? { matrix: item.matrix } : {}), labels: item.labels,
+      commands, ...(item.triggerUnknown ? { triggerUnknown: true } : {}),
+      limitation: 'Working-tree execution on this machine: not isolated, includes uncommitted edits, and is not a hosted result.' });
+  }
+  return legs;
+}
+
 export async function verifyCi(opts, deps = {}) {
-  const { discover = discoverCi, check = checkCi, replay = replayCi } = deps;
+  const { discover = discoverCi, check = checkCi, replay = replayCi, hostPlatform = process.platform } = deps;
   const report = { schemaVersion: 'ci-local-guard/ci-verify/v1', command: 'ci verify', identity: null, outcome: 'blocked',
-    verdict: null, expectedFailures: [], passedLocally: [], hostedOnly: [], notVerified: [], notTriggered: [], triggers: [],
+    verdict: null, expectedFailures: [], passedLocally: [], hostedOnly: [], hostExecutable: [], notVerified: [], notTriggered: [], triggers: [],
     staticOutsideTrigger: [], staticCheck: null, replays: [], issues: [], nextActions: [],
-    limitation: 'Covers only what runs locally: static workflow checks and Linux jobs replayed with act. Trigger selection follows documented branch/tag/path filters; job if-conditions are evaluated by act during replay, not here. Hosted-only items still need GitHub Actions.' };
+    limitation: 'Covers only what runs locally: static workflow checks and Linux jobs replayed with act. Trigger selection follows documented branch/tag/path filters; job if-conditions are evaluated by act during replay, not here. Hosted-only items still need GitHub Actions. hostExecutable only suggests working-tree commands for runner families matching this machine; they are not replays.' };
   try {
     const inventory = discover({ repo: opts.repo, head: opts.head || 'HEAD', tools: true, platform: opts.platform });
     const repo = inventory.identity.repo;
@@ -144,6 +170,7 @@ export async function verifyCi(opts, deps = {}) {
     report.notTriggered = report.triggers.filter(item => item.status === 'not-triggered');
     const plan = planTargets(inventory.workflows.filter(wf => wf.analysis === 'parsed'), report.triggers);
     report.hostedOnly = plan.hostedOnly;
+    report.hostExecutable = hostExecutableLegs(plan.hostedOnly, inventory.workflows.filter(wf => wf.analysis === 'parsed'), hostPlatform);
     report.notVerified.push(...plan.undetermined.map(item => ({ ...item, stage: 'selection' })));
     for (const wf of inventory.workflows.filter(item => item.analysis !== 'parsed')) {
       report.expectedFailures.push({ kind: 'workflow-invalid', workflow: wf.path, issues: wf.issues || [{ code: wf.analysis }] });
@@ -232,6 +259,7 @@ function verdict(report) {
   if (gaps) parts.push(`${gaps} replay environment gap(s)`);
   if (report.staticOutsideTrigger.length) parts.push(`${report.staticOutsideTrigger.length} static finding(s) outside the event`);
   if (report.hostedOnly.length) parts.push(`${report.hostedOnly.length} hosted-only: ${report.hostedOnly.slice(0, 3).map(label).join(', ')}`);
+  if (report.hostExecutable.length) parts.push(`${report.hostExecutable.length} hosted-only leg(s) with working-tree commands on this machine`);
   parts.push(`${report.notTriggered.length} workflow(s) not triggered`);
   return parts.join('; ');
 }
@@ -254,6 +282,10 @@ function nextSteps(report, opts) {
     example: ['--base', opts.event === 'push' ? 'origin/<branch>' : 'origin/main'] });
   if (report.identity?.workingTree?.status === 'uncommitted-changes') add('commit-before-verifying', { reason: 'ci verify checks the commit, not uncommitted edits' });
   if (report.outcome === 'clear-locally' && report.hostedOnly.length) add('watch-hosted-ci-for', { items: report.hostedOnly });
+  if (report.hostExecutable.length) add('run-host-commands', {
+    legs: report.hostExecutable.slice(0, 6).map(leg => ({ workflow: leg.workflow, job: leg.job,
+      ...(leg.matrix ? { matrix: leg.matrix } : {}), commands: leg.commands })),
+    note: 'These hosted-only legs use a runner family this machine matches. Running their commands in the working tree extends pre-push coverage; it is not isolated, includes uncommitted edits, and does not replace the hosted run.' });
 }
 
 export function summarizeVerify(report) {
@@ -261,5 +293,7 @@ export function summarizeVerify(report) {
     identity: report.identity && { ...report.identity, changedFiles: { ...report.identity.changedFiles, files: report.identity.changedFiles.files?.slice(0, 20) } },
     expectedFailures: report.expectedFailures.map(item => item.kind === 'replay' ? { ...item, nextActions: undefined,
       failures: item.failures.map(failure => ({ ...failure, lastLines: failure.lastLines.slice(-4), reader: undefined })) } : item),
+    hostExecutable: report.hostExecutable.map(leg => ({ ...leg, commands: leg.commands.slice(0, 6)
+      .map(command => ({ ...command, run: command.run.slice(0, 200) })) })),
     notVerified: report.notVerified.map(({ nextActions, ...item }) => item) };
 }

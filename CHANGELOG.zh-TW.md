@@ -12,6 +12,8 @@
 **升級：** 更新 GitHub archive／clone 或 Claude marketplace plugin，確認 `--version` 顯示 0.2.1。無需遷移；命令、設定與 receipts 都不變。
 
 ### 修正
+- `ci verify` 對 runner 家族與本機相符的 hosted-only leg（Windows 主機上的 windows leg）建議工作目錄命令：`hostExecutable` 附 job 命令與行號，nextActions 帶 `run-host-commands`。只是建議——未隔離、不是重播，Hosted run 仍然必要。
+
 - 隔離重播前辨識明確的 Docker daemon 命令與 Docker 建置 action，包含相依 job；提早回報缺少能力，避免誤判為 workflow 本身失敗。
 - `ci check`／`ci verify` 會讀已提交 `.github/actionlint.yaml` 裡的 `self-hosted-runner.labels`（也接受可重複的 `--runner-label`），第三方 runner labels（Blacksmith、Namespace、自架）不再產生假的未知 label findings；套用的 labels 與來源記在 report 的 `baseline` 欄位。
 - `ci verify` 規劃重播時改用與 `ci replay` 相同的 `--platform` 映射：被映射的 leg 視為本機可重播（`imageSource: caller-mapped`），對應的 runner-label findings 變成覆蓋註記而不是預期失敗。該事件不會觸發的 workflow，其靜態 findings 移到 `staticOutsideTrigger`；只因已知映像檔缺口（缺系統函式庫、缺 sudo）失敗的重播，改報為環境差距而非專案失敗。

@@ -31,7 +31,7 @@ node "<tool-directory>/cli.mjs" ci verify --repo "<project>" --summary --output 
 
 Verify answers one question: if this commit is pushed, what will fail? It works out which workflows the push (or --event pull_request) triggers from their branch, tag and path filters, runs the static check, and replays every triggered Linux job leg. Jobs needed by a replayed job run as part of it. The changed files come from --base (default: the branch's upstream for push, origin's default branch for pull_request); if they cannot be determined, path-filtered workflows are marked unknown and still checked.
 
-The verdict field is a one-line summary. expectedFailures lists static findings and failed replay steps with their commands and log locations. passedLocally lists replayed legs. hostedOnly lists what only GitHub can check: Windows or macOS runners, jobs that use secrets or a deployment environment. notVerified lists what could not be checked locally and why, such as missing act or a reusable workflow that is only called. notTriggered lists workflows this event does not start, with the filter that excluded them; their static findings appear in staticOutsideTrigger, visible but not counted as failures. A runner-label finding for a label you mapped with --platform is counted in staticCheck.mappedRunnerLabels instead of expectedFailures. A replay that failed only because the local image lacks what hosted runners preinstall (for example a shared library) is listed under notVerified with stage replay-environment, not as an expected failure.
+The verdict field is a one-line summary. expectedFailures lists static findings and failed replay steps with their commands and log locations. passedLocally lists replayed legs. hostedOnly lists what only GitHub can check: Windows or macOS runners, jobs that use secrets or a deployment environment. When such a leg's runner family matches this machine (a windows leg on a Windows host, a macOS leg on a Mac), hostExecutable repeats it with the job's run commands and line numbers, and nextActions carries a run-host-commands suggestion: running those commands in the working tree extends pre-push coverage to platforms replay cannot reach. It is a suggestion only — not isolated, includes uncommitted edits, never counted as replayed, and the hosted run is still required. notVerified lists what could not be checked locally and why, such as missing act or a reusable workflow that is only called. notTriggered lists workflows this event does not start, with the filter that excluded them; their static findings appear in staticOutsideTrigger, visible but not counted as failures. A runner-label finding for a label you mapped with --platform is counted in staticCheck.mappedRunnerLabels instead of expectedFailures. A replay that failed only because the local image lacks what hosted runners preinstall (for example a shared library) is listed under notVerified with stage replay-environment, not as an expected failure.
 
 | Result | Meaning | Exit |
 |---|---|---|
@@ -107,6 +107,14 @@ Each change has an effect:
 | undetermined | No reduction found, but some changes could not be evaluated | 3 |
 
 A reduction can be intended, such as skipping CI for documentation-only changes. The report lists it so the AI can confirm it with the user rather than discover it later. nextActions suggests replaying the affected job on both commits with ci replay when you want to compare actual runs.
+
+### Find efficiency candidates
+
+```sh
+node "<tool-directory>/cli.mjs" ci optimize --repo "<project>" [--workflow <file.yml>] --summary
+```
+
+Reads committed workflow structure and, when gh works, the hosted history of each workflow (up to 15 completed runs, read-only). Static findings: a job with no timeout-minutes anywhere (impact risk — it bounds the worst case at GitHub's 360-minute default; it is not waste that already happened), a re-firing trigger with no concurrency group, and a dependency install in a job with no caching of any kind (with the step's median seconds when history has them). History findings: the dominant step of the critical-path job (at least 60% of its median), matrix legs whose medians differ by 1.5× or more, and setup steps repeated across parallel jobs. Every finding carries its workflow line and sample counts, and impact says whether it targets wait, total minutes, or is a risk bound. Findings are places to look with evidence, not proven savings — measure inside a step with ci history --test-timing and verify a split with ci replay before pushing it. Exit 0 clear, 1 candidates, 2 blocked. Without usable hosted history the report is static-only (coverage.history) and history findings are skipped, never guessed.
 
 ### Discover the CI
 

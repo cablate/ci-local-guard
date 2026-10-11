@@ -12,6 +12,8 @@ Fixes from two real-project field reports (#2, #4): third-party runner-label bas
 **Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.2.1. No migration needed; commands, configuration and receipts are unchanged.
 
 ### Fixed
+- `ci verify` suggests working-tree commands for hosted-only legs whose runner family matches the machine (a windows leg on a Windows host): `hostExecutable` lists the job commands with line numbers and a `run-host-commands` next action. A suggestion only — not isolated, not a replay, and the hosted run stays required.
+
 - Detect explicit Docker daemon commands and Docker build actions before isolated replay, including job dependencies. Report the missing capability instead of a misleading workflow failure.
 - `ci check`/`ci verify` read `self-hosted-runner.labels` from the committed `.github/actionlint.yaml` (and accept a repeatable `--runner-label`), so third-party runner labels (Blacksmith, Namespace, self-hosted) no longer produce false unknown-label findings; the applied labels and their sources are recorded in the report's `baseline` field.
 - `ci verify` plans replays with the same `--platform` mapping as `ci replay`: mapped legs count as locally replayable (`imageSource: caller-mapped`) and their runner-label findings become coverage notes instead of expected failures. Static findings from workflows the event does not trigger move to `staticOutsideTrigger`, and replays that failed only on well-known image gaps (missing shared libraries, missing sudo) are reported as environment mismatches, not project failures.
