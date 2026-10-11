@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 // The CLI under test is this repository's own cli.mjs (three levels up from lib/).
 export const GUARD_CLI = fileURLToPath(new URL('../../../cli.mjs', import.meta.url));
-// Local-only default; CI points this at the Guard repo itself via GUARD_FIELD_REAL_REPO.
-export const REAL_REPO = process.env.GUARD_FIELD_REAL_REPO || 'D:/_CabLate_Agents/coder/projects/interactive-engine';
+// The real repository the offline, flake and gh batteries read. Defaults to this
+// Guard checkout; point GUARD_FIELD_REAL_REPO at a larger project for a heavier run.
+export const REAL_REPO = process.env.GUARD_FIELD_REAL_REPO || path.resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 // quality/field-battery/ — one directory above this file.
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TMP = path.join(ROOT, 'tmp');
@@ -61,7 +62,10 @@ export function tmpFile(name, content) {
 }
 
 // battery(scenarios, {label}) — each scenario:
-// { name, args, cwd?, env?, timeoutMs?, expect(rec) => string[] problems, note(rec) => string|null }
+// { name, args, cwd?, env?, timeoutMs?, expect(rec) => string[] problems, note(rec) => string|null,
+//   skip?: reason the scenario is not run (a missing environment variable),
+//   known?: open issue it reproduces; its problems report as KNOWN and do not fail the battery.
+//   Remove the marker in the change that fixes the issue. }
 // Returns { results, summary }. Writes reports/<ts>-<label>/.
 export async function battery(scenarios, { label }) {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -70,6 +74,11 @@ export async function battery(scenarios, { label }) {
   const results = [];
   for (const s of scenarios) {
     process.stdout.write(`- ${s.name} ... `);
+    if (s.skip) {
+      results.push({ name: s.name, status: 'SKIP', problems: [], note: s.skip });
+      console.log(`SKIP | ${s.skip}`);
+      continue;
+    }
     let rec;
     try {
       rec = s.run ? await s.run() : run(s.args, s);
@@ -79,20 +88,22 @@ export async function battery(scenarios, { label }) {
     let problems = [], note = null;
     try { problems = s.expect ? s.expect(rec) : []; } catch (e) { problems = [`expect() threw: ${e.message}`]; }
     try { note = s.note ? s.note(rec) : null; } catch { note = null; }
-    const status = problems.length ? 'FAIL' : 'PASS';
+    const status = !problems.length ? 'PASS' : s.known ? 'KNOWN' : 'FAIL';
+    if (s.known) note = [note, problems.length ? `known issue ${s.known}` : `known issue ${s.known} no longer reproduces: remove the marker`].filter(Boolean).join(' | ');
     results.push({ name: s.name, status, ms: rec.ms, code: rec.code, problems, note });
     writeFileSync(path.join(reportDir, `${s.name.replace(/[^a-zA-Z0-9_-]+/g, '_')}.json`), JSON.stringify(rec, null, 1));
     console.log(`${status} ${rec.ms}ms exit=${rec.code}${note ? ` | ${note}` : ''}${problems.length ? `\n    ! ${problems.join('; ')}` : ''}`);
   }
   const failed = results.filter(r => r.status === 'FAIL');
-  const summary = { label, total: results.length, failed: failed.length };
+  const count = status => results.filter(r => r.status === status).length;
+  const summary = { label, total: results.length, failed: failed.length, known: count('KNOWN'), skipped: count('SKIP') };
   writeFileSync(path.join(reportDir, 'summary.json'), JSON.stringify({ summary, results }, null, 1));
-  console.log(`\n[${label}] ${results.length - failed.length}/${results.length} passed; reports: ${reportDir}\n`);
+  console.log(`\n[${label}] ${count('PASS')}/${results.length} passed, ${summary.known} known, ${summary.skipped} skipped, ${failed.length} failed; reports: ${reportDir}\n`);
   return { results, summary, reportDir };
 }
 
 export const wf = {
   basic: (branches = ['main', 'dev']) => `name: CI\non:\n  push:\n    branches: [${branches.join(', ')}]\njobs:\n  build:\n    runs-on: blacksmith-2vcpu-ubuntu-2404\n    steps:\n      - run: echo hello\n`,
   libFail: () => `name: LibGap\non: [push]\njobs:\n  gap:\n    runs-on: blacksmith-2vcpu-ubuntu-2204\n    steps:\n      - run: |\n          echo "error while loading shared libraries: libnspr4.so"\n          exit 1\n`,
-  tapFail: () => `name: TapFail\non: [push]\njobs:\n  tap:\n    runs-on: blacksmith-2vcpu-ubuntu-2204\n    steps:\n      - run: |\n          echo "not ok 1 - tests/e2e/spa/foo.spec.mjs:766:5 › traffic baseline title"\n          exit 1\n      - if: always()\n        run: |\n          sleep 1\n          echo late-main-stage-output\n`,
+  tapFail: () => `name: TapFail\non: [push]\njobs:\n  tap:\n    runs-on: blacksmith-2vcpu-ubuntu-2204\n    steps:\n      - run: |\n          echo "not ok 1 - tests/e2e/sample.spec.mjs:12:5 › sample title"\n          exit 1\n      - if: always()\n        run: |\n          sleep 1\n          echo late-main-stage-output\n`,
 };

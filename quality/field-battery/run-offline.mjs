@@ -215,6 +215,51 @@ S.push({
   note: r => `${r.json?.outcome} ${(r.json?.issues || []).map(i => i.code).join(',')}`,
 });
 
+// --- ci optimize (static: fixture repos have no remote) and ci verify hostExecutable ---
+const callerWorkflows = () => ({
+  '.github/workflows/ci.yml': 'name: Tests\non:\n  push:\n    branches: [\'**\']\n  workflow_call:\nconcurrency:\n  group: ci-${{ github.ref }}\n  cancel-in-progress: true\njobs:\n  test:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    steps:\n      - run: echo ok\n',
+  '.github/workflows/release.yml': 'name: Release\non:\n  push:\n    tags: [\'v*\']\njobs:\n  verify:\n    uses: ./.github/workflows/ci.yml\n',
+});
+const findingCodes = r => (r.json?.findings || []).map(f => `${f.code}:${f.job || ''}`);
+for (const filtered of [false, true]) S.push({
+  name: `optimize-call-job-bounded${filtered ? '-filtered' : ''}`,
+  ...(filtered ? { known: '#7' } : {}),
+  run() { const d = makeRepo('opt-call', callerWorkflows()); return run(['ci', 'optimize', '--repo', d, ...(filtered ? ['--workflow', 'release.yml'] : []), '--json']); },
+  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null,
+    findingCodes(r).includes('missing-timeout-minutes:verify') ? 'call job reported unbounded although every called job has timeout-minutes' : null].filter(Boolean),
+  note: r => `${r.json?.outcome} ${r.json?.coverage?.history} [${findingCodes(r).join(',')}]`,
+});
+S.push({
+  name: 'optimize-concurrency-without-cancel',
+  run() { const d = makeRepo('opt-conc', { '.github/workflows/pr.yml': 'name: PR\non: [pull_request]\nconcurrency:\n  group: pr-${{ github.ref }}\njobs:\n  t:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo ok\n' }); return run(['ci', 'optimize', '--repo', d, '--json']); },
+  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null].filter(Boolean),
+  note: r => `${r.json?.outcome} [${findingCodes(r).join(',')}] (a group without cancel-in-progress queues, it does not cancel)`,
+});
+S.push({
+  name: 'optimize-global-tool-install',
+  run() { const d = makeRepo('opt-global', { '.github/workflows/ci.yml': 'name: CI\non:\n  push:\n    tags: [\'v*\']\njobs:\n  t:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: npm install -g npm@11\n      - run: pip install --user pipx\n' }); return run(['ci', 'optimize', '--repo', d, '--json']); },
+  expect: r => [!r.json ? `no JSON (exit=${r.code})` : null].filter(Boolean),
+  note: r => `${r.json?.outcome} [${findingCodes(r).join(',')}] (global tool installs, not lockfile dependencies)`,
+});
+S.push({
+  name: 'verify-host-executable-shell-and-dir',
+  known: '#7',
+  skip: process.platform !== 'win32' && 'hostExecutable lists windows legs only on a Windows host',
+  run() {
+    const steps = Array.from({ length: 14 }, (_, i) => `      - run: echo step${i + 1}\n`).join('');
+    const d = makeRepo('verify-hostexec', { '.github/workflows/win.yml': `name: Win\non: [push]\njobs:\n  win:\n    runs-on: windows-latest\n    timeout-minutes: 5\n    defaults:\n      run:\n        shell: bash\n        working-directory: app\n    steps:\n${steps}` });
+    return run(['ci', 'verify', '--repo', d, '--event', 'push'], { timeoutMs: 300000 });
+  },
+  expect: r => {
+    const leg = r.json?.hostExecutable?.[0];
+    if (!leg) return [`no hostExecutable leg (exit=${r.code}, outcome=${r.json?.outcome})`];
+    return [leg.commands.length < 14 && !Object.keys(leg).some(k => /truncat|omitted|total/i.test(k)) ? `commands cut to ${leg.commands.length}/14 with no truncation marker` : null,
+      !JSON.stringify(leg).includes('"app"') ? 'defaults.run.working-directory (app) not carried' : null,
+      !JSON.stringify(leg).includes('bash') ? 'defaults.run.shell (bash) not carried; the windows default is pwsh' : null].filter(Boolean);
+  },
+  note: r => `${r.json?.outcome} legs=${r.json?.hostExecutable?.length} commands=${r.json?.hostExecutable?.[0]?.commands?.length}`,
+});
+
 const scenarios = only ? S.filter(s => s.name.includes(only)) : S;
 const { summary } = await battery(scenarios, { label: 'offline' });
 process.exit(summary.failed ? 1 : 0);
