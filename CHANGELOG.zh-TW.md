@@ -5,6 +5,12 @@
 
 ## [未發布]
 
+### 修正
+- `ci optimize --workflow <caller>.yml` 在被呼叫的 workflow 不在選取範圍、但每個 job 都已有 timeout 時，不再把 reusable call job 報成沒有上限。
+- `ci verify` 的 host-executable 命令與 `ci locate` 的重現命令會附上每個 step 該用的 shell（宣告的，或 runner 預設，例如 Windows 的 pwsh）與工作目錄（依序取 step、job `defaults.run`、workflow `defaults.run`）；run step 超過 12 個時，`hostExecutable` 會標 `totalCommands` 與 `truncated`。
+- `ci optimize` 只比較同一 runner 家族的 matrix legs；經本地 reusable call 執行的歷史只報一次（或對到 caller job 與行號並以 `via` 標明）；pull request 的 concurrency 群組只排隊不取消時會提出；`npm install -g`、`pip install <工具>` 這類全域工具安裝不再算成依賴安裝。`--limit 1..50` 限制每個 workflow 讀取的 run 數，且每個 workflow 在 stderr 印一行進度。
+- `ci verify`、`ci replay`、`ci history` 與 `ci locate` 和其他 ci 命令一樣接受 `--json`（no-op）。
+
 ## [0.2.2] - 2026-10-11
 
 field-report 迴圈的三項新增：`ci optimize` 列出附證據的效率改善候選、回報者的壓力測試電池隨 CI 每次 push 自動跑、`ci verify` 對 runner 家族與本機相符的 hosted-only leg 建議工作目錄命令。

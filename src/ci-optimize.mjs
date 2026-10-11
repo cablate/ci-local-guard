@@ -12,10 +12,32 @@ import { isMap, LineCounter, parseDocument } from './vendor/yaml/index.js';
 const fail = (code, extra = {}) => { throw Object.assign(new Error(code), { optimizeCode: code, ...extra }); };
 const median = list => { const s = [...list].sort((a, b) => a - b); return s.length ? s[Math.floor((s.length - 1) / 2)] : null; };
 const HISTORY_LIMIT = 15;
-// An install command at a command position (line start, or after &&, || or ;).
-const INSTALL_COMMAND = /(?:^|[&|;]\s*)(?:sudo\s+)?(?:npm\s+(?:ci|install)|pnpm\s+install|yarn\s+install|pip3?\s+install|poetry\s+install|bundle\s+install)(?=\s|$)/m;
+// A lockfile-driven dependency install at a command position. Global tool
+// installs (npm -g, pip install <tool>) are not what a dependency cache keys
+// on, so they are left out.
+function dependencyInstall(run) {
+  return run.split(/\r?\n|&&|\|\||;/).map(segment => segment.trim()).some(segment => {
+    const match = /^(?:sudo\s+)?(npm|pnpm|yarn|pip3?|python3?\s+-m\s+pip|poetry|bundle)\s+(ci|install)(?=\s|$)(.*)$/.exec(segment);
+    if (!match) return false;
+    const [, tool, verb, rest] = match;
+    const args = rest.trim().split(/\s+/).filter(Boolean);
+    if (args.some(arg => ['-g', '--global'].includes(arg))) return false;
+    if (/pip/.test(tool)) return args.some(arg => ['-r', '--requirement', '-e', '--editable', '.'].includes(arg)
+      || /^-r\S/.test(arg) || /^\.(\[|\/|$)/.test(arg));
+    if (tool === 'npm' && verb === 'install') {
+      // `npm install` alone follows the lockfile; `npm install <pkg>` adds a package.
+      const valued = new Set(['--prefix', '--cache', '--registry', '--workspace', '-w']);
+      for (let i = 0; i < args.length; i++) {
+        if (valued.has(args[i])) { i++; continue; }
+        if (!args[i].startsWith('-')) return false;
+      }
+    }
+    return true;
+  });
+}
 // Hosted display names, aligned with ci-history's setup classification.
 const isSetupStep = name => /^(Set up job|Complete job|Post |Run actions\/(checkout|setup-[a-z]+|cache)@)/.test(name);
+const runnerFamily = label => /windows/i.test(label) ? 'windows' : /macos|^mac-/i.test(label) ? 'macos' : /ubuntu|linux/i.test(label) ? 'linux' : 'other';
 const stepDisplayName = step => step.name || `Run ${(step.run || '').split(/\r?\n/).find(line => line.trim())?.trim() || ''}`;
 
 // Committed workflow blob, by the SHA discovery already resolved for it.
@@ -36,7 +58,8 @@ function supplement(source) {
   const doc = parseDocument(source, { lineCounter: lines, uniqueKeys: true, prettyErrors: false, maxAliasCount: 64 });
   if (doc.errors.length || !isMap(doc.contents)) return null;
   const root = doc.contents;
-  const out = { workflowTimeout: root.has('timeout-minutes'), workflowConcurrency: root.has('concurrency'), onLine: 1, jobs: new Map() };
+  // Workflows have no timeout-minutes key; only jobs do.
+  const out = { workflowConcurrency: concurrencyMode(root.get('concurrency', true)), onLine: 1, jobs: new Map() };
   for (const pair of root.items) {
     if (pair.key?.value === 'on' && pair.key.range) out.onLine = lines.linePos(pair.key.range[0]).line;
   }
@@ -46,7 +69,7 @@ function supplement(source) {
     const id = typeof pair.key?.value === 'string' ? pair.key.value : null;
     if (!id || !isMap(pair.value)) continue;
     const node = pair.value;
-    const entry = { timeout: node.has('timeout-minutes'), concurrency: node.has('concurrency'), cachedStepLines: new Set() };
+    const entry = { timeout: node.has('timeout-minutes'), concurrency: concurrencyMode(node.get('concurrency', true)), cachedStepLines: new Set() };
     const stepsNode = node.get('steps', true);
     if (Array.isArray(stepsNode?.items)) for (const step of stepsNode.items) {
       if (!isMap(step)) continue;
@@ -60,6 +83,17 @@ function supplement(source) {
     out.jobs.set(id, entry);
   }
   return out;
+}
+
+// null without a group; 'cancel' when cancel-in-progress is true; 'queue' when
+// a group only queues runs; 'unknown' when cancel-in-progress is an expression.
+function concurrencyMode(node) {
+  if (node === undefined || node === null) return null;
+  if (!isMap(node)) return 'queue'; // A bare group name never cancels.
+  const cancel = node.get('cancel-in-progress');
+  if (cancel === true || cancel === 'true') return 'cancel';
+  if (typeof cancel === 'string' && cancel.includes('${{')) return 'unknown';
+  return 'queue';
 }
 
 // Only trigger patterns that re-fire for pushes to a branch: pull_request, a
@@ -78,12 +112,10 @@ function repeatsPerPush(triggers = []) {
 
 function staticFindings(workflow, sup, timing, supplements) {
   const findings = [];
-  // 1. No timeout-minutes at the job level or the workflow level. A reusable
-  // call job cannot set timeout-minutes itself; it is bounded when the
-  // workflow it calls carries a workflow-level timeout.
+  // 1. A job without timeout-minutes (workflows have no such key).
   for (const job of workflow.jobs || []) {
     const s = sup.jobs.get(job.id);
-    if (sup.workflowTimeout || s?.timeout) continue;
+    if (s?.timeout) continue;
     if (job.uses) {
       // A call job cannot set timeout-minutes; it is bounded when every job
       // of the called (local) workflow carries its own timeout.
@@ -98,11 +130,18 @@ function staticFindings(workflow, sup, timing, supplements) {
       evidence: { kind: 'static' },
       suggestion: `Add timeout-minutes (for example 15) to job "${job.id}" so a stuck run cannot burn up to GitHub's 360-minute default; this bounds the worst case, it is not waste that already happened.` });
   }
-  // 2. Re-firing triggers with no concurrency group anywhere.
-  if (repeatsPerPush(workflow.triggers) && !sup.workflowConcurrency
-    && !(workflow.jobs || []).some(job => sup.jobs.get(job.id)?.concurrency)) {
+  // 2. Re-firing triggers with no concurrency group anywhere, or a pull
+  // request workflow whose groups only queue. A push-only group that queues
+  // is usually a deliberate deploy lock and is left alone.
+  const modes = [sup.workflowConcurrency, ...(workflow.jobs || []).map(job => sup.jobs.get(job.id)?.concurrency)].filter(Boolean);
+  if (modes.length && modes.every(mode => mode === 'queue') && (workflow.triggers || []).some(trigger => trigger.event === 'pull_request')) {
     findings.push({ code: 'missing-concurrency-cancel', workflow: workflow.path, line: sup.onLine, impact: 'risk',
-      evidence: { kind: 'static' },
+      evidence: { kind: 'static', concurrency: 'queues-without-cancel' },
+      suggestion: 'The concurrency group only queues runs, so on a pull request every superseded push still runs to completion. Add cancel-in-progress: true (or an expression that enables it for pull requests).' });
+  }
+  if (repeatsPerPush(workflow.triggers) && !modes.length) {
+    findings.push({ code: 'missing-concurrency-cancel', workflow: workflow.path, line: sup.onLine, impact: 'risk',
+      evidence: { kind: 'static', concurrency: 'none' },
       suggestion: 'Add a workflow-level concurrency group (for example group: \${{ github.workflow }}-\${{ github.ref }} with cancel-in-progress: true) so a newer push cancels the superseded run.' });
   }
   // 3. Dependency installs in a job with no caching of any kind.
@@ -112,7 +151,7 @@ function staticFindings(workflow, sup, timing, supplements) {
       || (job.steps || []).some(step => step.uses && /^actions\/cache/.test(step.uses));
     if (cached) continue;
     for (const step of job.steps || []) {
-      if (!step.run || !INSTALL_COMMAND.test(step.run)) continue;
+      if (!step.run || !dependencyInstall(step.run)) continue;
       const name = stepDisplayName(step);
       const observed = timing ? timing(job.id, name) : null;
       findings.push({ code: 'uncached-dependency-install', workflow: workflow.path, job: job.id, step: name, line: step.line,
@@ -127,13 +166,14 @@ function staticFindings(workflow, sup, timing, supplements) {
 // History findings for one workflow. The critical path is the job that
 // finished last, following ci-history's algorithm (most-finished-last, held
 // only when it was last in at least half of the successful attempts).
-function historyAnalyze(workflow, exported) {
+function historyAnalyze(workflow, exported, analyzedPaths = new Set()) {
   const measured = (exported?.runs || []).map(measure);
   const successes = measured.filter(item => item.conclusion === 'success');
   const none = { findings: [], stats: { attempts: measured.length, successes: 0, stepTiming: () => null } };
   if (!successes.length) return none;
   const jobSeconds = new Map();
   const finishedLast = new Map();
+  const familyOf = new Map(); // hosted job name -> runner family from its observed labels
   const stepSeconds = new Map(); // `${hostedJobName}\0${stepName}` -> [seconds]
   for (const attempt of successes) {
     const ended = attempt.jobs.filter(job => job.completedAt !== null);
@@ -142,6 +182,7 @@ function historyAnalyze(workflow, exported) {
       finishedLast.set(last.name, (finishedLast.get(last.name) || 0) + 1);
     }
     for (const job of attempt.jobs) {
+      if (job.os && !familyOf.has(job.name)) familyOf.set(job.name, runnerFamily(job.os));
       if (job.seconds === null || job.conclusion === 'skipped') continue;
       jobSeconds.set(job.name, [...(jobSeconds.get(job.name) || []), job.seconds]);
       for (const step of job.steps || []) if (step.seconds !== null) {
@@ -156,19 +197,34 @@ function historyAnalyze(workflow, exported) {
   const hostedByJob = new Map();
   for (const [name, target] of names) hostedByJob.set(target.job, [...(hostedByJob.get(target.job) || []), name]);
   const jobLine = jobId => workflow.jobs?.find(job => job.id === jobId)?.line ?? null;
+  // A hosted job that ran through a local reusable call is named
+  // "<caller> / <called job>". When the called workflow is analyzed too, its
+  // own history already reports it, so drop the copy; otherwise attribute it
+  // to the caller job and its line.
+  const callers = (workflow.jobs || []).filter(job => typeof job.uses === 'string' && job.uses.startsWith('./'));
+  const resolve = hostedName => {
+    const target = names.get(hostedName);
+    if (target) return { job: target.job, line: jobLine(target.job) };
+    for (const caller of callers) {
+      if (!hostedName.startsWith(`${caller.name || caller.id} / `)) continue;
+      const called = caller.uses.replace(/^\.\//, '');
+      return analyzedPaths.has(called) ? null : { job: caller.id, line: caller.line, via: called };
+    }
+    return { job: hostedName, line: null };
+  };
   const findings = [];
   const critical = [...jobs].sort((a, b) => b.finishedLast - a.finishedLast)[0];
+  const criticalTarget = critical && resolve(critical.name);
   if (critical && critical.finishedLast / successes.length >= 0.5) {
-    const criticalTarget = names.get(critical.name);
     // 4. One step takes at least 60% of the critical job's median time.
     const steps = [...stepSeconds.entries()].filter(([key]) => key.startsWith(`${critical.name}\0`))
       .map(([key, list]) => ({ name: key.slice(key.indexOf('\0') + 1), medianSeconds: median(list), samples: list.length }))
       .sort((a, b) => b.medianSeconds - a.medianSeconds);
     const top = steps[0];
-    if (top && critical.medianSeconds > 0 && top.medianSeconds / critical.medianSeconds >= 0.6) {
+    if (criticalTarget && top && critical.medianSeconds > 0 && top.medianSeconds / critical.medianSeconds >= 0.6) {
       findings.push({ code: 'dominant-step-on-critical-path', workflow: workflow.path,
-        job: criticalTarget ? criticalTarget.job : critical.name, step: top.name,
-        line: criticalTarget ? jobLine(criticalTarget.job) : null, impact: 'wait',
+        job: criticalTarget.job, step: top.name, line: criticalTarget.line, impact: 'wait',
+        ...(criticalTarget.via ? { via: criticalTarget.via } : {}),
         evidence: { kind: 'history', seconds: top.medianSeconds, samples: top.samples,
           hostedJob: critical.name, shareOfJob: Math.round((top.medianSeconds / critical.medianSeconds) * 100) / 100,
           jobMedianSeconds: critical.medianSeconds, finishedLastIn: `${critical.finishedLast}/${successes.length}` },
@@ -186,26 +242,33 @@ function historyAnalyze(workflow, exported) {
           samples: list.length, presentInJobs: jobsWithStep(key.slice(key.indexOf('\0') + 1)) }));
       const total = setups.reduce((sum, item) => sum + item.medianSeconds, 0);
       if (!setups.length || total < 30 || !setups.some(item => item.presentInJobs >= 2)) continue;
-      const target = names.get(job.name);
-      findings.push({ code: 'duplicate-setup', workflow: workflow.path, job: target ? target.job : job.name,
-        line: target ? jobLine(target.job) : null, impact: 'total-minutes',
+      const target = resolve(job.name);
+      if (!target) continue;
+      findings.push({ code: 'duplicate-setup', workflow: workflow.path, job: target.job,
+        line: target.line, impact: 'total-minutes', ...(target.via ? { via: target.via } : {}),
         evidence: { kind: 'history', seconds: total, samples: job.samples, setup: setups },
         suggestion: 'These checkout/setup steps repeat across parallel jobs; share them (composite action) or cache the toolchain to cut total minutes. Parallel jobs do not affect the wait.' });
     }
   }
-  // 5. Matrix legs of one job whose medians differ by at least 1.5x.
+  // 5. Matrix legs of one job, on the same runner family, whose medians differ
+  // by at least 1.5x. Legs on different operating systems cannot be
+  // rebalanced; that spread is the platform (dominant-step covers its cost).
   const groups = new Map();
   for (const job of jobs) {
     const base = /^(.*) \(.+\)$/.exec(job.name)?.[1];
-    if (base) groups.set(base, [...(groups.get(base) || []), job]);
+    if (!base) continue;
+    const key = `${base}\0${familyOf.get(job.name) || 'unknown'}`;
+    groups.set(key, [...(groups.get(key) || []), job]);
   }
-  for (const [base, legs] of groups) {
+  for (const [key, legs] of groups) {
+    const base = key.slice(0, key.indexOf('\0'));
     const sorted = [...legs].sort((a, b) => b.medianSeconds - a.medianSeconds);
     const fastest = sorted.at(-1);
     if (sorted.length < 2 || !fastest.medianSeconds || sorted[0].medianSeconds / fastest.medianSeconds < 1.5) continue;
-    const target = names.get(sorted[0].name);
-    findings.push({ code: 'matrix-leg-spread', workflow: workflow.path, job: target ? target.job : base,
-      line: target ? jobLine(target.job) : null, impact: 'wait',
+    const target = resolve(sorted[0].name);
+    if (!target) continue;
+    findings.push({ code: 'matrix-leg-spread', workflow: workflow.path, job: target.job,
+      line: target.line, impact: 'wait', ...(target.via ? { via: target.via } : {}),
       evidence: { kind: 'history', seconds: sorted[0].medianSeconds, samples: sorted[0].samples,
         legs: sorted.map(leg => ({ name: leg.name, medianSeconds: leg.medianSeconds, samples: leg.samples })) },
       suggestion: `The slowest leg of "${base}" sets the wait. Compare the legs (ci history --test-timing --compare-job), then rebalance or split the slow leg.` });
@@ -222,12 +285,15 @@ function historyAnalyze(workflow, exported) {
 }
 
 export function optimizeCi(opts = {}, deps = {}) {
-  const { discover = discoverCi, collect = collectHistory, get = githubGet, read = readWorkflowSource } = deps;
+  const { discover = discoverCi, collect = collectHistory, get = githubGet, read = readWorkflowSource,
+    progress = text => process.stderr.write(`[ci-local-guard] ${text}\n`) } = deps;
   const report = { schemaVersion: 'ci-local-guard/ci-optimize/v1', command: 'ci optimize', identity: null,
     outcome: 'blocked', scope: 'workflow-efficiency-candidates',
     coverage: null, findings: [], issues: [], nextActions: [], limitation: null };
   try {
     if (opts.workflow !== undefined && !/^[A-Za-z0-9_.-]+\.ya?ml$/.test(opts.workflow)) fail('invalid-workflow-file');
+    if (opts.limit !== undefined && !(/^[1-9][0-9]?$/.test(String(opts.limit)) && Number(opts.limit) <= 50)) fail('invalid-limit');
+    const limit = opts.limit === undefined ? HISTORY_LIMIT : Number(opts.limit);
     const inventory = discover({ repo: opts.repo, head: opts.head || 'HEAD' });
     if (!Array.isArray(inventory.workflows) || !inventory.workflows.length) fail('no-github-workflows');
     const selected = opts.workflow
@@ -244,20 +310,32 @@ export function optimizeCi(opts = {}, deps = {}) {
       if (sup) supplements.set(workflow.path, sup);
       else report.issues.push({ code: 'workflow-source-unparsable', workflow: workflow.path });
     }
+    // Local workflows the selection calls, read even when --workflow leaves
+    // them out: whether a call job is bounded depends on them.
+    for (const workflow of parsed) for (const job of workflow.jobs || []) {
+      const file = typeof job.uses === 'string' && job.uses.startsWith('./') ? job.uses.slice(2) : null;
+      if (!file || supplements.has(file)) continue;
+      const called = inventory.workflows.find(item => item.path === file && item.analysis === 'parsed');
+      const sup = called ? supplement(read(opts.repo, called.blob)) : null;
+      if (sup) supplements.set(file, sup);
+    }
     const repository = inventory.identity?.repository || null;
     const histories = [];
     if (repository) {
-      for (const workflow of parsed) {
-        if (!supplements.has(workflow.path)) continue;
+      const pending = parsed.filter(workflow => supplements.has(workflow.path));
+      for (const [index, workflow] of pending.entries()) {
+        // One line per workflow so a caller can tell a long read from a hang.
+        progress(`ci optimize: reading hosted history ${index + 1}/${pending.length} ${workflow.path} (up to ${limit} runs)`);
         try {
-          histories.push({ workflow, exported: collect({ repository, workflow: path.posix.basename(workflow.path), limit: HISTORY_LIMIT }, { get }) });
+          histories.push({ workflow, exported: collect({ repository, workflow: path.posix.basename(workflow.path), limit }, { get }) });
         } catch (error) {
           report.issues.push({ code: 'history-unavailable', workflow: workflow.path,
             reason: /^[a-z-]+$/.test(error.message) ? error.message : 'github-metadata-unavailable' });
         }
       }
     }
-    const analyzed = histories.map(({ workflow, exported }) => historyAnalyze(workflow, exported));
+    const analyzedPaths = new Set(histories.map(({ workflow }) => workflow.path));
+    const analyzed = histories.map(({ workflow, exported }) => historyAnalyze(workflow, exported, analyzedPaths));
     const observed = histories.some(({ exported }) => exported.runs?.length);
     const findings = [];
     for (const workflow of parsed) {
@@ -271,7 +349,7 @@ export function optimizeCi(opts = {}, deps = {}) {
       workflows: parsed.map(item => item.path) };
     report.coverage = { history: observed ? 'observed' : 'static-only', workflows: parsed.length,
       historyWorkflows: histories.map(({ workflow, exported }) => ({ workflow: workflow.path, attempts: exported.runs.length })),
-      sampleLimit: HISTORY_LIMIT };
+      sampleLimit: limit };
     report.findings = findings;
     report.limitation = 'Static findings read committed workflow structure only; nothing was executed and expressions are unevaluated. '
       + 'History findings are medians over recent completed runs of this workflow: observations to investigate, not guaranteed savings. '

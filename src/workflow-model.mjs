@@ -14,7 +14,7 @@ export function parseWorkflow(source, file) {
   const doc = parseDocument(source, { lineCounter: lines, uniqueKeys: true, prettyErrors: false, maxAliasCount: 64 });
   const issues = doc.errors.map(error => ({ code: error.code === 'DUPLICATE_KEY' ? 'duplicate-key' : 'yaml-syntax',
     line: lines.linePos(error.pos[0]).line }));
-  const result = { path: file, name: null, triggers: [], jobs: [], issues };
+  const result = { path: file, name: null, defaults: {}, triggers: [], jobs: [], issues };
   if (issues.length || !isMap(doc.contents)) {
     if (!issues.length) issues.push({ code: 'workflow-not-a-mapping', line: 1 });
     return result;
@@ -23,6 +23,7 @@ export function parseWorkflow(source, file) {
   const root = doc.contents;
   const name = root.get('name');
   result.name = typeof name === 'string' ? name : null;
+  result.defaults = runDefaults(doc.toJS().defaults);
   const on = root.get('on', true);
   const onValue = on && doc.toJS().on;
   if (typeof onValue === 'string') result.triggers = [{ event: onValue, filters: {} }];
@@ -47,6 +48,8 @@ export function parseWorkflow(source, file) {
       return { index, id: typeof value.id === 'string' ? value.id : null, name: typeof value.name === 'string' ? value.name : null,
         ...(typeof value.run === 'string' ? { run: value.run } : {}), ...(typeof value.uses === 'string' ? { uses: value.uses } : {}),
         ...(value.if !== undefined ? { if: String(value.if) } : {}), ...(value['continue-on-error'] !== undefined ? { continueOnError: value['continue-on-error'] } : {}),
+        ...(typeof value.shell === 'string' ? { shell: value.shell } : {}),
+        ...(typeof value['working-directory'] === 'string' ? { workingDirectory: value['working-directory'] } : {}),
         line: line(step) };
     }) : [];
     if (isSeq(stepsNode) && stepsNode.items.length > MAX_STEPS) issues.push({ code: 'step-limit', line: line(stepsNode) });
@@ -58,9 +61,18 @@ export function parseWorkflow(source, file) {
       usesSecrets: /\bsecrets\s*(\.|\[)/.test(JSON.stringify(js)) || js.secrets !== undefined,
       services: js.services && typeof js.services === 'object' ? Object.keys(js.services) : [],
       matrix: matrixLegs(js.strategy?.matrix), timeoutMinutes: js['timeout-minutes'] ?? null,
-      continueOnError: js['continue-on-error'] ?? null, steps });
+      continueOnError: js['continue-on-error'] ?? null, defaults: runDefaults(js.defaults), steps });
   }
   return result;
+}
+
+// `defaults.run` at workflow or job level: the shell and directory run steps
+// inherit unless they declare their own.
+function runDefaults(defaults) {
+  const run = defaults && typeof defaults === 'object' ? defaults.run : null;
+  if (!run || typeof run !== 'object') return {};
+  return { ...(typeof run.shell === 'string' ? { shell: run.shell } : {}),
+    ...(typeof run['working-directory'] === 'string' ? { workingDirectory: run['working-directory'] } : {}) };
 }
 
 // Static matrix legs only. include/exclude follow GitHub's documented rules for

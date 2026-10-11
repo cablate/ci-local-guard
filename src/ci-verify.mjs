@@ -23,6 +23,7 @@ export function verifyOptions(args) {
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (key === '--summary') { opts.summary = true; continue; }
+    if (key === '--json') continue; // Output is always JSON; accepted like the other ci commands.
     if (key === '--static-only') { opts.staticOnly = true; continue; }
     if (key === '--pull') { opts.pull = true; continue; }
     if (key === '--runner-label') {
@@ -126,9 +127,16 @@ export function hostExecutableLegs(hostedOnly, workflows, platform = process.pla
   for (const item of hostedOnly) {
     if (!Array.isArray(item.labels) || !/^runner /.test(item.reason) || runnerFamily(item.labels) !== wanted) continue;
     const job = workflows.find(wf => wf.path === item.workflow)?.jobs?.find(job => job.id === item.job);
-    const commands = (job?.steps || []).filter(step => step.run).slice(0, 12).map(step => ({ line: step.line, run: step.run }));
+    const runSteps = (job?.steps || []).filter(step => step.run);
+    // The runner's own default shell differs by family (pwsh on Windows), so
+    // say which shell each command expects instead of leaving it implicit.
+    const runnerShell = wanted === 'windows' ? 'pwsh' : 'bash';
+    const commands = runSteps.slice(0, 12).map(step => ({ line: step.line, run: step.run,
+      shell: step.shell || runnerShell, shellSource: step.shell ? 'declared' : 'runner-default',
+      ...(step.workingDirectory ? { workingDirectory: step.workingDirectory } : {}) }));
     legs.push({ workflow: item.workflow, job: item.job, ...(item.matrix ? { matrix: item.matrix } : {}), labels: item.labels,
-      commands, ...(item.triggerUnknown ? { triggerUnknown: true } : {}),
+      commands, totalCommands: runSteps.length, ...(runSteps.length > commands.length ? { truncated: true } : {}),
+      ...(item.triggerUnknown ? { triggerUnknown: true } : {}),
       limitation: 'Working-tree execution on this machine: not isolated, includes uncommitted edits, and is not a hosted result.' });
   }
   return legs;
@@ -285,7 +293,7 @@ function nextSteps(report, opts) {
   if (report.hostExecutable.length) add('run-host-commands', {
     legs: report.hostExecutable.slice(0, 6).map(leg => ({ workflow: leg.workflow, job: leg.job,
       ...(leg.matrix ? { matrix: leg.matrix } : {}), commands: leg.commands })),
-    note: 'These hosted-only legs use a runner family this machine matches. Running their commands in the working tree extends pre-push coverage; it is not isolated, includes uncommitted edits, and does not replace the hosted run.' });
+    note: 'These hosted-only legs use a runner family this machine matches. Run each command with its shell (runner-default means what the hosted runner uses) from its workingDirectory relative to the repository root. This extends pre-push coverage; it is not isolated, includes uncommitted edits, and does not replace the hosted run.' });
 }
 
 export function summarizeVerify(report) {

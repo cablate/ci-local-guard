@@ -48,7 +48,7 @@ export async function ciCommand(args) {
       const opts = {};
       for (let i = 1; i < args.length; i++) {
         const key = args[i];
-        const allowed = ['--repo', '--head', '--output', '--summary', '--json', ...(args[0] === 'check' ? ['--provider', '--binary', '--runner-label'] : []), ...(args[0] === 'optimize' ? ['--workflow'] : [])];
+        const allowed = ['--repo', '--head', '--output', '--summary', '--json', ...(args[0] === 'check' ? ['--provider', '--binary', '--runner-label'] : []), ...(args[0] === 'optimize' ? ['--workflow', '--limit'] : [])];
         if (key === '--runner-label') {
           if (!args[i + 1] || args[i + 1].startsWith('--') || !/^[A-Za-z0-9_.-]{1,128}$/.test(args[i + 1])) throw new Error('invalid-ci-options');
           (opts.runnerLabels ??= []).push(args[++i]);
@@ -64,7 +64,7 @@ export async function ciCommand(args) {
       summary = Boolean(opts['--summary']);
       if (opts['--output']) save = reserveReportOutput(opts['--output']);
       report = args[0] === 'check' ? await checkCi({ repo: opts['--repo'], head: opts['--head'], provider: opts['--provider'], binary: opts['--binary'], runnerLabels: opts.runnerLabels })
-        : args[0] === 'optimize' ? optimizeCi({ repo: opts['--repo'], head: opts['--head'], workflow: opts['--workflow'] })
+        : args[0] === 'optimize' ? optimizeCi({ repo: opts['--repo'], head: opts['--head'], workflow: opts['--workflow'], limit: opts['--limit'] })
         : discoverCi({ repo: opts['--repo'], head: opts['--head'], tools: true });
     }
   } catch (error) {

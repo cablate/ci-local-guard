@@ -47,6 +47,7 @@ export function replayOptions(args) {
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (['--pull', '--offline', '--summary'].includes(key)) { opts[key.slice(2)] = true; continue; }
+    if (key === '--json') continue; // Output is always JSON; accepted like the other ci commands.
     const value = args[i + 1];
     if (value === undefined || value.startsWith('--')) fail('invalid-replay-options', { detail: key });
     i += 1;

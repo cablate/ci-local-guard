@@ -24,6 +24,7 @@ export function locateOptions(args) {
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (key === '--summary') { opts.summary = true; continue; }
+    if (key === '--json') continue; // Output is always JSON; accepted like the other ci commands.
     const value = args[i + 1];
     if (!single.includes(key) || Object.hasOwn(opts, key.slice(2)) || value === undefined || value.startsWith('--')) fail('invalid-locate-options', { detail: key });
     opts[key.slice(2)] = value;
@@ -273,6 +274,8 @@ export async function locateCi(opts, deps = {}) {
         if (declared) {
           failure.workflowLocation = { path: file, line: declared.line };
           failure.command = declared.run ? String(declared.run).slice(0, 2000) : null;
+          if (declared.run) Object.assign(failure, { ...(declared.shell ? { shell: declared.shell } : {}),
+            ...(declared.workingDirectory ? { workingDirectory: declared.workingDirectory } : {}) });
           failure.action = declared.uses || null;
         }
         let saved;
@@ -341,7 +344,9 @@ function decide(report, opts) {
     if (item.stepKind === 'runner-setup') add('check-runner-setup', { job: item.job, reason: 'the runner failed outside workflow steps; the project change may not be the cause' });
   }
   const runnable = located.find(item => item.command && (item.local.sameOsAsRunner || item.local.replayable));
-  if (runnable) add('reproduce-step-command', { job: runnable.job, command: runnable.command, cwd: 'repository-root',
+  if (runnable) add('reproduce-step-command', { job: runnable.job, command: runnable.command,
+    cwd: runnable.workingDirectory ? `repository-root/${runnable.workingDirectory}` : 'repository-root',
+    shell: runnable.shell || 'runner-default',
     note: runnable.local.sameOsAsRunner ? 'This host has the same OS family as the failed runner.' : 'Runs on your host, not in the runner image; a Linux replay is closer.' });
   const replay = located.find(item => item.local.replayable && item.workflowLocation);
   if (replay) add('replay-failed-job', { command: 'ci replay', args: replayArgv({ repo: report.identity.localRepo, head: replay.sha, workflow: replay.workflowLocation.path,

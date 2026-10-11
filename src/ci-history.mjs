@@ -17,6 +17,7 @@ export function historyOptions(args) {
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (key === '--summary') { opts.summary = true; continue; }
+    if (key === '--json') continue; // Output is always JSON; accepted like the other ci commands.
     if (key === '--reproduce') { opts.reproduce = true; continue; }
     const value = args[i + 1];
     if (value === undefined || value.startsWith('--')) fail('invalid-history-options', { detail: key });

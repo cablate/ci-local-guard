@@ -116,6 +116,8 @@ test('a failed run is located to job, workflow step and tests, with reproduce an
     assert.deepEqual(failure.local, { headMatches: true, replayable: true, sameOsAsRunner: true });
     const kinds = report.nextActions.map(a => a.kind);
     for (const kind of ['read-failed-test', 'inspect-workflow-step', 'reproduce-step-command', 'replay-failed-job', 'verify-before-next-push']) assert.ok(kinds.includes(kind), kind);
+    const reproduce = report.nextActions.find(a => a.kind === 'reproduce-step-command');
+    assert.deepEqual([reproduce.cwd, reproduce.shell], ['repository-root', 'runner-default'], 'no declared shell or directory: say it is the runner default');
     assert.ok(report.nextActions.find(a => a.kind === 'replay-failed-job').args.includes(sha));
     const again = await locateCi(locateOptions(['--repo', repo, '--run', '7']), { ...deps, fetchLog: () => { throw new Error('not refetched'); } });
     assert.equal(again.failures[0].evidence.reused, true, 'a saved log of a completed job is reused');

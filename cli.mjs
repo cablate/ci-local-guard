@@ -404,10 +404,10 @@ Local repository commands (require Git; trust project code before execution):
     Exit 0 no reduction, 1 reduced, 2 blocked, 3 undetermined.
   ci check --repo <project> [--head <ref>] [--provider actionlint|zizmor] [--binary <trusted-absolute-path>] [--summary] [--output <new-file>]
     Offline static baseline only. Pinned installed tools; no automatic downloads or workflow execution.
-  ci optimize --repo <project> [--head <ref>] [--workflow <file.yml>] [--summary] [--output <new-file>]
+  ci optimize --repo <project> [--head <ref>] [--workflow <file.yml>] [--limit 1..50] [--summary] [--output <new-file>]
     Efficiency candidates with evidence: missing timeout-minutes or concurrency cancel, uncached dependency installs
     (static, with lines); dominant step on the critical path, matrix leg spread, repeated setup (from hosted history,
-    read-only via gh, up to 15 runs). Findings are places to look, not proven savings. Exit 0 clear, 1 candidates, 2 blocked.
+    read-only via gh, up to --limit runs, default 15; one progress line per workflow on stderr). Findings are places to look, not proven savings. Exit 0 clear, 1 candidates, 2 blocked.
   ci replay --repo <project> --workflow .github/workflows/<file> --job <id> [--head <ref>] [--event push|pull_request|workflow_dispatch]
             [--matrix key:value]... [--platform <runs-on-label>=<image>]... [--pull] [--offline] [--timeout <seconds>]
             [--ref refs/heads/<name>] [--act-binary <path>] [--summary] [--output <new-file>]

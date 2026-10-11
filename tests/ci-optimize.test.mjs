@@ -347,3 +347,129 @@ jobs:
   assert.match(finding.suggestion, /cannot set timeout-minutes itself/);
   assert.match(finding.suggestion, /\.github\/workflows\/ci\.yml/);
 });
+
+// Two-file fixture: release.yml calls ci.yml, whose only job is bounded.
+const callerYaml = `name: Release
+on:
+  push:
+    tags: [v*]
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+`;
+const calledYaml = `name: Tests
+on:
+  push:
+    branches: ['**']
+concurrency:
+  group: ci
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      matrix:
+        shard: [1, 2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - run: node --test
+`;
+const callerWf = wf('.github/workflows/release.yml', 'r1', [{ event: 'push', filters: { tags: ['v*'] } }],
+  [job('verify', 6, [], { uses: './.github/workflows/ci.yml' })]);
+const calledWf = wf('.github/workflows/ci.yml', 'c1', [{ event: 'push', filters: { branches: ['**'] } }],
+  [job('test', 9, [{ line: 15, run: 'node --test' }], { localReplay: {
+    replayable: [{ matrix: { shard: 1 } }, { matrix: { shard: 2 } }], hostedOnly: [], unknown: [] } })]);
+const twoFileSources = { r1: callerYaml, c1: calledYaml };
+
+test('--workflow on the caller still sees that the called workflow bounds the call job', () => {
+  const report = optimizeCi({ workflow: 'release.yml' }, { discover: discover([callerWf, calledWf]), read: (_repo, blob) => twoFileSources[blob] });
+  assert.deepEqual(report.identity.workflows, ['.github/workflows/release.yml']);
+  assert.ok(!report.findings.some(f => f.code === 'missing-timeout-minutes'), 'the unselected ci.yml still bounds verify');
+});
+
+test('leg spread compares legs on the same runner family only', () => {
+  const leg = (name, end, label) => ({ ...hjob(name, 0, end), labels: [label] });
+  const crossOs = optimizeCi({}, { discover: discover([matrixWf], 'o/r'), read: () => matrixYaml, progress: () => {},
+    collect: collect([entry(1, [leg('test (windows-latest)', 120, 'windows-latest'), leg('test (ubuntu-latest)', 20, 'ubuntu-latest')])]) });
+  assert.ok(!crossOs.findings.some(f => f.code === 'matrix-leg-spread'), 'an OS matrix spread is the platform, not a rebalancing target');
+  const shards = optimizeCi({}, { discover: discover([matrixWf], 'o/r'), read: () => matrixYaml, progress: () => {},
+    collect: collect([entry(1, [leg('test (1)', 60, 'ubuntu-latest'), leg('test (2)', 20, 'ubuntu-latest'), leg('test (3)', 200, 'windows-latest')])]) });
+  const found = shards.findings.filter(f => f.code === 'matrix-leg-spread');
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0].evidence.legs.map(item => item.name), ['test (1)', 'test (2)']);
+});
+
+test('history through a reusable call is reported once, or attributed to the caller line', () => {
+  const leg = (name, end) => hjob(name, 0, end);
+  const histories = {
+    'release.yml': collect([entry(1, [leg('verify / test (1)', 60), leg('verify / test (2)', 20)])]),
+    'ci.yml': collect([entry(2, [leg('test (1)', 60), leg('test (2)', 20)])]),
+  };
+  const collectBy = (opts, deps) => histories[opts.workflow](opts, deps);
+  const both = optimizeCi({}, { discover: discover([callerWf, calledWf], 'o/r'), read: (_repo, blob) => twoFileSources[blob],
+    collect: collectBy, progress: () => {} });
+  const spreads = both.findings.filter(f => f.code === 'matrix-leg-spread');
+  assert.deepEqual(spreads.map(f => [f.workflow, f.job, f.line]), [['.github/workflows/ci.yml', 'test', 9]], 'no release.yml copy with line null');
+  const callerOnly = optimizeCi({ workflow: 'release.yml' }, { discover: discover([callerWf, calledWf], 'o/r'),
+    read: (_repo, blob) => twoFileSources[blob], collect: collectBy, progress: () => {} });
+  const attributed = callerOnly.findings.find(f => f.code === 'matrix-leg-spread');
+  assert.deepEqual([attributed.workflow, attributed.job, attributed.line, attributed.via],
+    ['.github/workflows/release.yml', 'verify', 6, '.github/workflows/ci.yml']);
+});
+
+test('a pull request group that only queues is reported; a push-only deploy lock and an expression are not', () => {
+  const yaml = (trigger, concurrency) => `name: X
+on:
+${trigger}
+${concurrency}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: make
+`;
+  const run = (trigger, concurrency, triggers) => optimizeCi({}, { discover: discover([wf('.github/workflows/x.yml', 'x1', triggers,
+    [job('build', 7, [{ line: 10, run: 'make' }])])]), read: () => yaml(trigger, concurrency) });
+  const pr = [{ event: 'pull_request', filters: {} }];
+  const queued = run('  pull_request:', 'concurrency:\n  group: pr-${{ github.ref }}', pr);
+  assert.equal(queued.findings.find(f => f.code === 'missing-concurrency-cancel').evidence.concurrency, 'queues-without-cancel');
+  assert.ok(run('  pull_request:', 'concurrency: pr-group', pr).findings.some(f => f.code === 'missing-concurrency-cancel'), 'a bare group name queues too');
+  const deployLock = run('  push:\n    branches: [main]', 'concurrency:\n  group: deploy', [{ event: 'push', filters: { branches: ['main'] } }]);
+  assert.ok(!deployLock.findings.some(f => f.code === 'missing-concurrency-cancel'), 'a push-only lock queues on purpose');
+  const expression = run('  pull_request:', "concurrency:\n  group: g\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", pr);
+  assert.ok(!expression.findings.some(f => f.code === 'missing-concurrency-cancel'), 'an expression is not judged');
+  assert.equal(run('  pull_request:', 'concurrency:\n  group: g\n  cancel-in-progress: true', pr).findings.length, 0);
+});
+
+test('global tool installs are not dependency installs; lockfile installs are', () => {
+  const yaml = command => `name: X
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: ${command}
+`;
+  const reported = command => optimizeCi({}, { discover: discover([wf('.github/workflows/x.yml', 'x1', [{ event: 'workflow_dispatch', filters: {} }],
+    [job('build', 4, [{ line: 8, run: command }])])]), read: () => yaml(command) })
+    .findings.some(f => f.code === 'uncached-dependency-install');
+  for (const command of ['npm install -g npm@11', 'npm i -g pnpm', 'pip install --user pipx', 'pip install --upgrade pip', 'npm install left-pad'])
+    assert.equal(reported(command), false, command);
+  for (const command of ['npm ci', 'npm install', 'npm install --no-audit', 'npm install --prefix app', 'pip install -r requirements.txt',
+    'pip install -e .', 'python -m pip install -r req.txt', 'poetry install', 'pnpm install --frozen-lockfile', 'cd app && npm ci'])
+    assert.equal(reported(command), true, command);
+});
+
+test('--limit bounds the runs read per workflow and progress goes out once per workflow', () => {
+  const seen = [];
+  const lines = [];
+  const report = optimizeCi({ limit: '3' }, { discover: discover([callerWf, calledWf], 'o/r'), read: (_repo, blob) => twoFileSources[blob],
+    collect: opts => { seen.push(opts.limit); return { runs: [] }; }, progress: text => lines.push(text) });
+  assert.deepEqual(seen, [3, 3]);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /1\/2 \.github\/workflows\/release\.yml \(up to 3 runs\)/);
+  assert.equal(report.coverage.sampleLimit, 3);
+  for (const bad of ['0', '51', 'x']) assert.equal(optimizeCi({ limit: bad }, { discover: discover([calledWf]) }).issues[0].code, 'invalid-limit');
+});

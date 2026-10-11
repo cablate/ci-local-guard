@@ -220,7 +220,9 @@ test('hosted-only legs whose runner family matches the machine get working-tree 
   assert.equal(onWindows[0].job, 'test');
   assert.equal(onWindows[0].matrix.os, 'windows-latest');
   const testStep = inventory.workflows.find(wf => wf.path === '.github/workflows/ci.yml').jobs.find(job => job.id === 'test').steps[0];
-  assert.deepEqual(onWindows[0].commands, [{ line: testStep.line, run: 'npm test' }]);
+  assert.deepEqual(onWindows[0].commands, [{ line: testStep.line, run: 'npm test', shell: 'pwsh', shellSource: 'runner-default' }]);
+  assert.equal(onWindows[0].totalCommands, 1);
+  assert.equal('truncated' in onWindows[0], false);
   assert.match(onWindows[0].limitation, /not isolated/);
   assert.deepEqual(hostExecutableLegs(plan.hostedOnly, parsed, 'linux'), [], 'a Linux host replay covers these; a mac family does not match either');
   assert.deepEqual(hostExecutableLegs(plan.hostedOnly, parsed, 'darwin'), []);
@@ -241,4 +243,48 @@ test('verify suggests host-executable commands without changing the outcome', as
   assert.match(action.note, /not isolated/);
   const summary = summarizeVerify(report);
   assert.equal(summary.hostExecutable[0].commands[0].run, 'npm test');
+});
+
+test('host-executable commands carry the effective shell and directory, and say when they are cut', t => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'guard-verify-shell-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init', '-b', 'main'); git('config', 'user.email', 'f@example.invalid'); git('config', 'user.name', 'F');
+  const runs = Array.from({ length: 13 }, (_, i) => `      - run: echo step${i + 2}`).join('\n');
+  const yaml = `on: push
+defaults:
+  run:
+    working-directory: workflow-dir
+jobs:
+  win:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    steps:
+      - run: ./build.sh
+        shell: pwsh
+        working-directory: tools
+${runs}
+`;
+  mkdirSync(path.join(root, '.github/workflows'), { recursive: true });
+  writeFileSync(path.join(root, '.github/workflows/win.yml'), yaml);
+  git('add', '.'); git('commit', '-m', 'base');
+  const inventory = discoverCi({ repo: root });
+  const steps = inventory.workflows[0].jobs[0].steps;
+  assert.deepEqual([steps[0].shell, steps[0].workingDirectory], ['pwsh', 'tools'], 'step-level keys win');
+  assert.deepEqual([steps[1].shell, steps[1].workingDirectory], ['bash', 'app'], 'job defaults beat workflow defaults');
+  const plan = planTargets(inventory.workflows, [{ workflow: '.github/workflows/win.yml', status: 'triggered' }]);
+  const [leg] = hostExecutableLegs(plan.hostedOnly, inventory.workflows, 'win32');
+  assert.equal(leg.commands.length, 12);
+  assert.equal(leg.totalCommands, 14);
+  assert.equal(leg.truncated, true);
+  assert.deepEqual(leg.commands[0], { line: steps[0].line, run: './build.sh', shell: 'pwsh', shellSource: 'declared', workingDirectory: 'tools' });
+  assert.deepEqual([leg.commands[1].shell, leg.commands[1].shellSource, leg.commands[1].workingDirectory], ['bash', 'declared', 'app']);
+});
+
+test('verify accepts --json like the other ci commands', () => {
+  assert.doesNotThrow(() => verifyOptions(['--repo', '.', '--json']));
+  assert.equal(verifyOptions(['--repo', '.', '--json', '--summary']).summary, true);
 });

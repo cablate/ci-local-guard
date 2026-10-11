@@ -209,10 +209,18 @@ function analyzeWorkflow(item, read, readPath, callerPlatforms = {}) {
         ...(job.environment ? { environment: job.environment } : {}), ...(job.usesSecrets ? { usesSecrets: true } : {}),
         ...(calls ? { calls } : {}), services: job.services, matrix: { kind: job.matrix.kind, legs: legs ? legs.length : null },
         steps: job.steps.map(step => ({ line: step.line, ...(step.name ? { name: step.name } : {}),
-          ...(step.run ? { run: step.run.slice(0, 4000) } : {}), ...(step.uses ? { uses: step.uses } : {}), ...(step.if ? { if: step.if } : {}),
+          ...(step.run ? { run: step.run.slice(0, 4000), ...runContext(step, job, model) } : {}), ...(step.uses ? { uses: step.uses } : {}), ...(step.if ? { if: step.if } : {}),
           ...(step.uses?.startsWith('./') ? { localAction: localAction(step.uses, readPath) } : {}) })),
         localReplay };
     }) };
+}
+
+// The shell and directory a run step actually uses: its own, else the job's
+// defaults.run, else the workflow's. Absent means the runner default.
+function runContext(step, job, model) {
+  const shell = step.shell ?? job.defaults?.shell ?? model.defaults?.shell;
+  const workingDirectory = step.workingDirectory ?? job.defaults?.workingDirectory ?? model.defaults?.workingDirectory;
+  return { ...(shell ? { shell } : {}), ...(workingDirectory ? { workingDirectory } : {}) };
 }
 
 // Shell commands the workflows run, deduplicated, with package scripts they call.

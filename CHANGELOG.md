@@ -5,6 +5,12 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+- `ci optimize --workflow <caller>.yml` no longer reports a reusable call job as unbounded when the called workflow, outside the selection, already gives every job a timeout.
+- `ci verify` host-executable commands and the `ci locate` reproduce command carry the shell each step expects (declared, or the runner default such as pwsh on Windows) and its working directory (step, then job `defaults.run`, then workflow `defaults.run`); `hostExecutable` reports `totalCommands` and `truncated` when more than 12 run steps exist.
+- `ci optimize` compares matrix legs on the same runner family only, reports history that ran through a local reusable call once (or against the caller job and line with `via`), flags pull request concurrency groups that only queue, and no longer counts global tool installs (`npm install -g`, `pip install <tool>`) as dependency installs. `--limit 1..50` bounds the runs read per workflow, and one progress line per workflow goes to stderr.
+- `ci verify`, `ci replay`, `ci history` and `ci locate` accept `--json` as a no-op, like the other ci commands.
+
 ## [0.2.2] - 2026-10-11
 
 Three additions from the field-report loop: `ci optimize` lists efficiency candidates with evidence, the reporter's field battery runs in CI on every push, and `ci verify` suggests working-tree commands for hosted-only legs whose runner family matches the machine.
