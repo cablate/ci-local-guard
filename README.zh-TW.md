@@ -124,7 +124,7 @@ Guard 會用你的本機權限執行專案腳本，請用在你信任的專案�
 
 ## 目前進度
 
-[v0.3.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.3.0) 是實驗版。[Windows 與 Ubuntu 測試](https://github.com/cablate/ci-local-guard/actions/runs/37925557268)已通過，真實專案情境的壓力測試電池也隨每次 push 在 CI 上跑。發布壓縮檔，以及 Claude Code 2.1.293 plugin 的安裝、更新和移除，最近一次是在 v0.1.1 實測。macOS、arm64、Claude Desktop、WSL 尚未測試。
+[v0.3.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.3.0) 是實驗版。[Windows 與 Ubuntu 測試](https://github.com/cablate/ci-local-guard/actions/runs/38147060855)已通過，真實專案情境的壓力測試電池也隨每次 push 在 CI 上跑。發布壓縮檔，以及 Claude Code 2.1.293 plugin 的安裝、更新和移除，最近一次是在 v0.1.1 實測。macOS、arm64、Claude Desktop、WSL 尚未測試。
 
 Guard 的重點是失敗診斷（ci locate）、workflow 審查（ci diff、ci check）與耗時分析（ci history、ci optimize）；本機重播（ci verify、ci replay）是選配，專案 adapter／push hook 這條路線是實驗功能。來自一個 12-workflow 真實專案的四輪 field reports 塑造了現在的樣貌：真正幫上忙的成為主角。
 

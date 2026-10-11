@@ -5,6 +5,12 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-11
+
+Repositioning and health-check fixes from issue #10: Guard leads with CI failure diagnosis and workflow review for AI agents, and `ci history` / `ci optimize` no longer blame gate jobs or count flaky retries as avoidable failures.
+
+**Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.3.0. Commands, configuration and receipts are unchanged. `install-hook` now refuses when it would stop existing hooks from running; pass `--force` to keep the old overwrite behavior. Preflight, adapters and hooks still work but are marked experimental.
+
 ### Changed
 - Guard is repositioned around what field reports showed actually helps: failure diagnosis (`ci locate`), workflow review (`ci diff`, `ci check`) and timing analysis lead the README; local replay (`ci verify`, `ci replay`) is optional, and the project-adapter/push-hook path (preflight, plan, descriptors, receipts, hooks) is marked experimental.
 
@@ -134,3 +140,4 @@ Install from GitHub without an npm account. The first experimental release bring
 [0.2.1]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...v0.2.1
 [0.2.2]: https://github.com/cablate/ci-local-guard/compare/v0.2.1...v0.2.2
 [0.2.3]: https://github.com/cablate/ci-local-guard/compare/v0.2.2...v0.2.3
+[0.3.0]: https://github.com/cablate/ci-local-guard/compare/v0.2.3...v0.3.0

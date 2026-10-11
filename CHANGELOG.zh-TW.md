@@ -5,6 +5,12 @@
 
 ## [未發布]
 
+## [0.3.0] - 2026-10-11
+
+依 issue #10 健檢做的重新定位與修正：Guard 主打給 AI agent 用的 CI 失敗診斷與 workflow 審查；`ci history`／`ci optimize` 不再把關卡 job 當成元凶，也不再把 flaky 重跑算成可避免的失敗。
+
+**升級：** 更新 GitHub archive／clone 或 Claude marketplace plugin，確認 `--version` 顯示 0.3.0。命令、設定與 receipts 都不變。`install-hook` 在會讓既有 hooks 停止執行時改為拒絕；要沿用舊的覆蓋行為請加 `--force`。preflight、adapter 與 hooks 仍可使用，但標為實驗功能。
+
 ### 變更
 - Guard 依實測回報重新定位：失敗診斷（`ci locate`）、workflow 審查（`ci diff`、`ci check`）與時間分析成為 README 主打；本機重播（`ci verify`、`ci replay`）為選用，專案 adapter／push hook 路線（preflight、plan、descriptor、receipt、hooks）標為實驗功能。
 
@@ -134,3 +140,4 @@ field-report 迴圈的三項新增：`ci optimize` 列出附證據的效率改�
 [0.2.1]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...v0.2.1
 [0.2.2]: https://github.com/cablate/ci-local-guard/compare/v0.2.1...v0.2.2
 [0.2.3]: https://github.com/cablate/ci-local-guard/compare/v0.2.2...v0.2.3
+[0.3.0]: https://github.com/cablate/ci-local-guard/compare/v0.2.3...v0.3.0

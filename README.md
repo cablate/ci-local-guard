@@ -124,7 +124,7 @@ Guard runs your project's scripts with your local permissions, so use it with pr
 
 ## Project status
 
-[v0.3.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.3.0) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/37925557268) pass, and a field battery of real-project scenarios runs in CI on every push. The release archive and Claude Code 2.1.293 plugin installation, upgrade and removal were last tested on v0.1.1. macOS, arm64, Claude Desktop and WSL have not been tested.
+[v0.3.0](https://github.com/cablate/ci-local-guard/releases/tag/v0.3.0) is an experimental release. [Windows and Ubuntu tests](https://github.com/cablate/ci-local-guard/actions/runs/38147060855) pass, and a field battery of real-project scenarios runs in CI on every push. The release archive and Claude Code 2.1.293 plugin installation, upgrade and removal were last tested on v0.1.1. macOS, arm64, Claude Desktop and WSL have not been tested.
 
 Guard's focus is failure diagnosis (ci locate), workflow review (ci diff, ci check) and timing analysis (ci history, ci optimize); local replay (ci verify, ci replay) is optional, and the project-adapter/push-hook path is experimental. Four rounds of field reports from a real 12-workflow project shaped this: what actually helped is now what leads.
 
