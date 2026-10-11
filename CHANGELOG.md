@@ -5,6 +5,17 @@ Changes to know about when using or upgrading Guard. Entries follow Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-11
+
+Three additions from the field-report loop: `ci optimize` lists efficiency candidates with evidence, the reporter's field battery runs in CI on every push, and `ci verify` suggests working-tree commands for hosted-only legs whose runner family matches the machine.
+
+**Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.2.2. No migration needed; commands, configuration and receipts are unchanged.
+
+### Added
+- Added ci optimize: efficiency candidates with evidence — missing timeout-minutes, missing concurrency cancel and uncached dependency installs (static, with workflow lines), plus the dominant step of the critical-path job, matrix-leg spread and repeated setup across parallel jobs (from hosted history, read-only, up to 15 runs). Exit 0 clear, 1 candidates, 2 blocked; without usable hosted history the report is static-only and history findings are skipped.
+- Added the field battery under quality/field-battery/ (from the issue #4 reporter's scenario suite): the offline battery runs in CI on every push; the gh, flake (deadline pressure) and replay batteries run on demand with the documented prerequisites.
+- `ci verify` suggests working-tree commands for hosted-only legs whose runner family matches the machine (a windows leg on a Windows host): `hostExecutable` lists the job commands with line numbers and a `run-host-commands` next action. A suggestion only — not isolated, not a replay, and the hosted run stays required.
+
 ## [0.2.1] - 2026-10-11
 
 Fixes from two real-project field reports (#2, #4): third-party runner-label baselines and platform mapping in `ci verify`, billable-minutes and failed-run locating, a discovery budget that scales with inventory, JSON reports for invalid offline input, and hosted-style replay step names.
@@ -12,8 +23,6 @@ Fixes from two real-project field reports (#2, #4): third-party runner-label bas
 **Upgrading:** Update the GitHub archive/clone or Claude marketplace plugin and check that --version prints 0.2.1. No migration needed; commands, configuration and receipts are unchanged.
 
 ### Fixed
-- `ci verify` suggests working-tree commands for hosted-only legs whose runner family matches the machine (a windows leg on a Windows host): `hostExecutable` lists the job commands with line numbers and a `run-host-commands` next action. A suggestion only — not isolated, not a replay, and the hosted run stays required.
-
 - Detect explicit Docker daemon commands and Docker build actions before isolated replay, including job dependencies. Report the missing capability instead of a misleading workflow failure.
 - `ci check`/`ci verify` read `self-hosted-runner.labels` from the committed `.github/actionlint.yaml` (and accept a repeatable `--runner-label`), so third-party runner labels (Blacksmith, Namespace, self-hosted) no longer produce false unknown-label findings; the applied labels and their sources are recorded in the report's `baseline` field.
 - `ci verify` plans replays with the same `--platform` mapping as `ci replay`: mapped legs count as locally replayable (`imageSource: caller-mapped`) and their runner-label findings become coverage notes instead of expected failures. Static findings from workflows the event does not trigger move to `staticOutsideTrigger`, and replays that failed only on well-known image gaps (missing shared libraries, missing sudo) are reported as environment mismatches, not project failures.
@@ -101,3 +110,4 @@ Install from GitHub without an npm account. The first experimental release bring
 [0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0
 [0.2.1]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...v0.2.1
+[0.2.2]: https://github.com/cablate/ci-local-guard/compare/v0.2.1...v0.2.2

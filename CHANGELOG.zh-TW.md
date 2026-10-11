@@ -5,6 +5,17 @@
 
 ## [未發布]
 
+## [0.2.2] - 2026-10-11
+
+field-report 迴圈的三項新增：`ci optimize` 列出附證據的效率改善候選、回報者的壓力測試電池隨 CI 每次 push 自動跑、`ci verify` 對 runner 家族與本機相符的 hosted-only leg 建議工作目錄命令。
+
+**升級：** 更新 GitHub archive／clone 或 Claude marketplace plugin，確認 `--version` 顯示 0.2.2。無需遷移；命令、設定與 receipts 都不變。
+
+### 新增
+- 新增 ci optimize：附證據的效率改善候選——缺 timeout-minutes、缺 concurrency 取消、依賴安裝無快取（靜態，附 workflow 行號），以及關鍵路徑 job 的主導 step、matrix leg 落差、跨平行 job 重複的 setup（來自 Hosted 歷史，唯讀，最多 15 runs）。Exit 0 clear、1 candidates、2 blocked；Hosted 歷史取不到時 report 為 static-only，歷史 findings 略過。
+- 新增 quality/field-battery/ 壓力測試電池（來自 issue #4 回報者的情境套件）：offline 電池隨 CI 每次 push 自動跑；gh、flake（deadline 壓力）與 replay 電池依文件說明的前提手動跑。
+- `ci verify` 對 runner 家族與本機相符的 hosted-only leg（Windows 主機上的 windows leg）建議工作目錄命令：`hostExecutable` 附 job 命令與行號，nextActions 帶 `run-host-commands`。只是建議——未隔離、不是重播，Hosted run 仍然必要。
+
 ## [0.2.1] - 2026-10-11
 
 兩份真實專案實測回報（#2、#4）的修正：`ci verify` 的第三方 runner-label 基線與平台映射、計費分鐘與失敗 run 定位、隨盤點規模縮放的 discovery 預算、離線命令對無效輸入的 JSON report，以及 Hosted 慣例的 replay step 顯示名。
@@ -12,8 +23,6 @@
 **升級：** 更新 GitHub archive／clone 或 Claude marketplace plugin，確認 `--version` 顯示 0.2.1。無需遷移；命令、設定與 receipts 都不變。
 
 ### 修正
-- `ci verify` 對 runner 家族與本機相符的 hosted-only leg（Windows 主機上的 windows leg）建議工作目錄命令：`hostExecutable` 附 job 命令與行號，nextActions 帶 `run-host-commands`。只是建議——未隔離、不是重播，Hosted run 仍然必要。
-
 - 隔離重播前辨識明確的 Docker daemon 命令與 Docker 建置 action，包含相依 job；提早回報缺少能力，避免誤判為 workflow 本身失敗。
 - `ci check`／`ci verify` 會讀已提交 `.github/actionlint.yaml` 裡的 `self-hosted-runner.labels`（也接受可重複的 `--runner-label`），第三方 runner labels（Blacksmith、Namespace、自架）不再產生假的未知 label findings；套用的 labels 與來源記在 report 的 `baseline` 欄位。
 - `ci verify` 規劃重播時改用與 `ci replay` 相同的 `--platform` 映射：被映射的 leg 視為本機可重播（`imageSource: caller-mapped`），對應的 runner-label findings 變成覆蓋註記而不是預期失敗。該事件不會觸發的 workflow，其靜態 findings 移到 `staticOutsideTrigger`；只因已知映像檔缺口（缺系統函式庫、缺 sudo）失敗的重播，改報為環境差距而非專案失敗。
@@ -101,3 +110,4 @@
 [0.1.1]: https://github.com/cablate/ci-local-guard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cablate/ci-local-guard/releases/tag/v0.1.0
 [0.2.1]: https://github.com/cablate/ci-local-guard/compare/v0.2.0...v0.2.1
+[0.2.2]: https://github.com/cablate/ci-local-guard/compare/v0.2.1...v0.2.2
