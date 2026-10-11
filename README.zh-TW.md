@@ -104,6 +104,10 @@ node "<tool-directory>/cli.mjs" audit-runs --input runs.json
 
 這幾個指令會收集執行紀錄，整理時間花在哪裡。AI 可以據此追查慢的步驟、提出修改，再用 compare-runs 比較前後結果。目的是少做重複、沒必要的工作，不是少跑該跑的測試。
 
+## 壓力測試電池
+
+[quality/field-battery/](quality/field-battery/README.md) 用資料驅動的情境，對 Guard 自己的 CLI 做壓力測試：離線邊界、gh 唯讀查詢、discovery 截止時間壓力，以及 act/Docker 重播。CI 在每次 push 與 pull request 都會跑離線電池，並以這個 repo 自身作為樣本 repo。另外三個電池從 repo 根目錄手跑：`node quality/field-battery/run-gh.mjs`（需已登入的 GitHub CLI）、`node quality/field-battery/run-flake.mjs`、`node quality/field-battery/run-replay.mjs`（需 Docker 與 act）。
+
 ## 更多說明
 
 - [接入、報告格式與範例](docs/reference.zh-TW.md)

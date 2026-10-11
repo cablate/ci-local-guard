@@ -104,6 +104,10 @@ node "<tool-directory>/cli.mjs" audit-runs --input runs.json
 
 These commands collect run metadata and show where time is spent. Your AI can then investigate a slow step, propose a change, and use compare-runs to compare the before-and-after runs. The aim is to remove unnecessary work, not necessary tests.
 
+## Field battery
+
+[quality/field-battery/](quality/field-battery/README.md) stress-tests Guard's own CLI with data-driven scenarios: offline edges, gh read-only queries, discovery deadline pressure, and act/Docker replay. CI runs the offline battery on every push and pull request, with this repository itself as the sample repo. Run the other three by hand from the repo root: `node quality/field-battery/run-gh.mjs` (needs a signed-in GitHub CLI), `node quality/field-battery/run-flake.mjs`, and `node quality/field-battery/run-replay.mjs` (needs Docker and act).
+
 ## More help
 
 - [Setup, report formats and examples](docs/reference.md)
