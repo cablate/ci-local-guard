@@ -6,7 +6,7 @@ ci-local-guard（受測 CLI＝repo 根目錄的 `cli.mjs`）的壓力與邊界�
 
 ```bash
 cd quality/field-battery
-node run-offline.mjs            # 離線邊界：discover/diff/check/read-evidence/inspect-runs/plan/doctor（不需 gh、Docker）
+node run-offline.mjs            # 離線邊界：discover/diff/check/read-evidence/inspect-runs/plan/doctor，加上專案接入 adopt-*（descriptor／adapter／receipt、plan、pre-push、install-hook；不需 gh、Docker，需要 git 與 sh）
 node run-gh.mjs                 # gh 唯讀：#2 修復回歸、limit 邊界、export round-trip、並發（需 gh 登入）
 node run-flake.mjs              # discovery 15s deadline 壓力：基準/並發/CPU 負載
 node run-replay.mjs             # act/Docker 重播：env mismatch、TAP failedTests、lastActivity、未知 job、缺映像
