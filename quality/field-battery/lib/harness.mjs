@@ -14,10 +14,10 @@ export const REAL_REPO = process.env.GUARD_FIELD_REAL_REPO || path.resolve(fileU
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TMP = path.join(ROOT, 'tmp');
 
-export function run(args, { cwd = process.cwd(), env = {}, timeoutMs = 120000 } = {}) {
+export function run(args, { cwd = process.cwd(), env = {}, timeoutMs = 120000, input } = {}) {
   const t0 = performance.now();
   const r = spawnSync(process.execPath, [GUARD_CLI, ...args], {
-    cwd, encoding: 'utf8', windowsHide: true, timeout: timeoutMs,
+    cwd, encoding: 'utf8', windowsHide: true, timeout: timeoutMs, input,
     env: { ...process.env, ...env },
   });
   const ms = Math.round(performance.now() - t0);
